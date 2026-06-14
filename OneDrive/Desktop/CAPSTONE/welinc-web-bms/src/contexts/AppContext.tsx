@@ -1,0 +1,81 @@
+/* eslint-disable react-refresh/only-export-components */
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import type { User } from '../lib/types';
+import { logout as doLogout, getCurrentUser } from '../lib/auth';
+import { api } from '../lib/api';
+
+interface AppContextType {
+  user: User |
+   null;
+  setUser: (u: User | null) => void;
+  logout: () => void;
+  darkMode: boolean;
+  toggleDarkMode: () => void;
+  sidebarCollapsed: boolean;
+  toggleSidebar: () => void;
+}
+
+const AppContext = createContext<AppContextType | null>(null);
+
+export function AppProvider({ children }: { children: React.ReactNode }) {
+  const [user, setUser] = useState<User | null>(() => {
+    const currentUser = getCurrentUser();
+    if (currentUser) {
+      try {
+        const token = localStorage.getItem('token');
+        if (token) {
+          api.defaults.headers.common.Authorization = `Bearer ${token}`;
+        }
+      } catch {
+        // ignore localStorage access errors
+      }
+    }
+    return currentUser;
+  });
+
+  const [darkMode, setDarkMode] = useState<boolean>(() => {
+    const stored = localStorage.getItem('welinc_theme');
+    return stored === 'dark';
+  });
+
+  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
+    return localStorage.getItem('welinc_sidebar') === 'collapsed';
+  });
+
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', darkMode);
+  }, [darkMode]);
+
+  const toggleDarkMode = useCallback(() => {
+    setDarkMode(prev => {
+      const next = !prev;
+      localStorage.setItem('welinc_theme', next ? 'dark' : 'light');
+      return next;
+    });
+  }, []);
+
+  const toggleSidebar = useCallback(() => {
+    setSidebarCollapsed(prev => {
+      const next = !prev;
+      localStorage.setItem('welinc_sidebar', next ? 'collapsed' : 'expanded');
+      return next;
+    });
+  }, []);
+
+  const logout = useCallback(() => {
+    doLogout();
+    setUser(null);
+  }, []);
+
+  return (
+    <AppContext.Provider value={{ user, setUser, logout, darkMode, toggleDarkMode, sidebarCollapsed, toggleSidebar }}>
+      {children}
+    </AppContext.Provider>
+  );
+}
+
+export function useApp() {
+  const ctx = useContext(AppContext);
+  if (!ctx) throw new Error('useApp must be inside AppProvider');
+  return ctx;
+}
