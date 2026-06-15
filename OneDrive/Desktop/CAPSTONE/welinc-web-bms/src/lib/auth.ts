@@ -1,5 +1,14 @@
 import { jwtDecode } from 'jwt-decode';
 import type { User } from './types';
+import type { LucideIcon } from 'lucide-react';
+import {
+  LayoutDashboard,
+  ClipboardList,
+  Settings,
+  Users,
+  User as UserIcon,
+  CalendarCheck,
+} from 'lucide-react';
 
 export interface JwtPayload {
   sub: string;
@@ -13,25 +22,8 @@ export type UserRole = 'Administrator' | 'Operations' | 'Customer Service';
 export interface NavItem {
   label: string;
   path: string;
-  icon: string;
+  icon: LucideIcon;
   subtitle?: string;
-}
-
-type DemoUser = User & { password: string; contact: string; status?: string; createdAt?: string; initials?: string };
-
-export const DEMO_USERS: DemoUser[] = [
-  { fullName: 'Maria Santos', username: 'msantos', password: 'Admin@123', email: 'msantos@welinc.ph', contact: '+63 917 123 4567', role: 'Administrator', status: 'Active', createdAt: '2025-01-10', initials: 'MS' },
-  { fullName: 'Juan Dela Cruz', username: 'jdelacruz', password: 'Ops@123', email: 'jdelacruz@welinc.ph', contact: '+63 918 234 5678', role: 'Operations', status: 'Active', createdAt: '2025-02-14', initials: 'JD' },
-  { fullName: 'Ana Reyes', username: 'areyes', password: 'CS@123', email: 'areyes@welinc.ph', contact: '+63 919 345 6789', role: 'Customer Service', status: 'Active', createdAt: '2025-03-05', initials: 'AR' },
-];
-
-export function login(username: string, password: string): User | null {
-  const user = DEMO_USERS.find(u => u.username === username && u.password === password);
-  if (user) {
-    localStorage.setItem('welinc_user', JSON.stringify(user));
-    return user;
-  }
-  return null;
 }
 
 export function logout(): void {
@@ -39,7 +31,7 @@ export function logout(): void {
   localStorage.removeItem('token');
 }
 
-export function getCurrentUser() {
+export function getCurrentUser(): User | null {
   // Prefer token-backed user reconstruction. If a valid token exists, use it.
   const token = localStorage.getItem('token');
   if (token) {
@@ -50,13 +42,21 @@ export function getCurrentUser() {
       ) || decoded.roles?.[0];
 
       return {
+        id: decoded.sub,
         username: decoded.username,
         role: mapBackendRole(primaryRole?.role ?? ''),
-        system: decoded.system,
-        roles: decoded.roles,
         fullName: decoded.username,
         email: '',
-      } as User;
+        contact: '',
+        status: 'Active',
+        createdAt: '',
+        initials: decoded.username
+          .split(/[.\s_-]+/)
+          .filter(Boolean)
+          .slice(0, 2)
+          .map((n) => n[0]?.toUpperCase())
+          .join(''),
+      };
     } catch {
       // Invalid token should not keep a stale stored user.
       localStorage.removeItem('welinc_user');
@@ -82,31 +82,22 @@ export function getNavItems(role: UserRole): NavItem[] {
   switch (role) {
     case 'Administrator':
       return [
-        { label: 'Dashboard', path: '/admin/dashboard', icon: 'LayoutDashboard', subtitle: 'Overview & KPIs' },
-        { label: 'Bookings', path: '/admin/bookings', icon: 'ClipboardList', subtitle: 'Manage requests' },
-        { label: 'Scheduling', path: '/admin/scheduling', icon: 'CalendarDays', subtitle: 'Assign & plot' },
-        { label: 'Job Orders', path: '/admin/job-orders', icon: 'FileText', subtitle: 'Service documents' },
-        { label: 'Vehicle & Crew', path: '/admin/fleet', icon: 'Truck', subtitle: 'Availability tracking' },
-        { label: 'Post-Service', path: '/admin/post-service', icon: 'ClipboardCheck', subtitle: 'After-service records' },
-        { label: 'Users', path: '/admin/users', icon: 'Users', subtitle: 'Account management' },
-        { label: 'Reports', path: '/admin/reports', icon: 'BarChart2', subtitle: 'Analytics & insights' },
-        { label: 'Settings', path: '/admin/settings', icon: 'Settings', subtitle: 'System preferences' },
+        { label: 'Dashboard', path: '/admin/dashboard', icon: LayoutDashboard, subtitle: 'Overview' },
+        { label: 'Booking', path: '/admin/bookings', icon: ClipboardList, subtitle: 'Manage requests' },
+        { label: 'Scheduling', path: '/admin/scheduling', icon: CalendarCheck, subtitle: 'Assign resources' },
+        { label: 'User Management', path: '/admin/users', icon: Users, subtitle: 'Account management' },
+        { label: 'Settings', path: '/admin/settings', icon: Settings, subtitle: 'System preferences' },
       ];
     case 'Operations':
       return [
-        { label: 'Dashboard', path: '/operations/dashboard', icon: 'LayoutDashboard', subtitle: 'Overview' },
-        { label: 'Scheduling', path: '/operations/scheduling', icon: 'CalendarDays', subtitle: 'Plan routes' },
-        { label: 'Job Orders', path: '/operations/job-orders', icon: 'FileText', subtitle: 'Service documents' },
-        { label: 'Settings', path: '/operations/settings', icon: 'Settings', subtitle: 'Preferences' },
+        { label: 'Dashboard', path: '/operations/dashboard', icon: LayoutDashboard, subtitle: 'Overview' },
       ];
     case 'Customer Service':
       return [
-        { label: 'Dashboard', path: '/cs/dashboard', icon: 'LayoutDashboard', subtitle: 'Overview' },
-        { label: 'Bookings', path: '/cs/bookings', icon: 'ClipboardList', subtitle: 'Client requests' },
-        { label: 'Daily Sales', path: '/cs/daily-sales', icon: 'Receipt', subtitle: 'Sales reports' },
-        { label: 'Post-Service', path: '/cs/post-service', icon: 'ClipboardCheck', subtitle: 'After-service' },
-        { label: 'Reports', path: '/cs/reports', icon: 'BarChart2', subtitle: 'Analytics' },
-        { label: 'Settings', path: '/cs/settings', icon: 'Settings', subtitle: 'Preferences' },
+        { label: 'Dashboard', path: '/cs/dashboard', icon: LayoutDashboard, subtitle: 'Overview' },
+        { label: 'Bookings', path: '/cs/bookings', icon: ClipboardList, subtitle: 'Client requests' },
+        { label: 'Profile', path: '/cs/profile', icon: UserIcon, subtitle: 'Your profile' },
+        { label: 'Settings', path: '/cs/settings', icon: Settings, subtitle: 'Preferences' },
       ];
     default:
       return [];

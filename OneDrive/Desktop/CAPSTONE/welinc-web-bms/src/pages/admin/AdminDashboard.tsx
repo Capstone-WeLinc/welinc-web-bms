@@ -29,21 +29,31 @@ const STATUS_COLORS: Record<string, string> = {
 export default function AdminDashboard() {
   const navigate = useNavigate();
   const [bookings, setBookings] = useState<Booking[]>([]);
+  const [lastRefreshed, setLastRefreshed] = useState<string>('');
 
   const normalizeStatus = (status: string) =>
     status === 'For Correction' ? 'Discrepancy' : status;
 
   useEffect(() => {
     let mounted = true;
-    api.get<Booking[]>('/booking')
-      .then((response) => {
-        if (mounted) setBookings(response.data ?? []);
-      })
-      .catch(() => {
-        if (mounted) setBookings([]);
-      });
+    const fetchBookings = () => {
+      api.get<Booking[]>('/booking')
+        .then((response) => {
+          if (mounted) {
+            setBookings(response.data ?? []);
+            setLastRefreshed(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+          }
+        })
+        .catch(() => {
+          if (mounted) setBookings([]);
+        });
+    };
+
+    fetchBookings();
+    const refreshId = window.setInterval(fetchBookings, 5000);
     return () => {
       mounted = false;
+      window.clearInterval(refreshId);
     };
   }, []);
 
@@ -57,6 +67,27 @@ export default function AdminDashboard() {
 
     return { total, forPlotting, scheduled, completed, discrepancy, cancelled };
   }, [bookings]);
+
+  const monthlyCounts = useMemo(() => {
+    const counts = [0, 0, 0, 0, 0, 0];
+    const currentYear = new Date().getFullYear();
+    bookings.forEach((booking) => {
+      const date = new Date(booking.date);
+      if (!Number.isNaN(date.getTime()) && date.getFullYear() === currentYear) {
+        const month = date.getMonth();
+        if (month >= 0 && month < 6) counts[month] += 1;
+      }
+    });
+    return counts;
+  }, [bookings]);
+
+  const monthlyMax = Math.max(...monthlyCounts, 1);
+  const monthlyAxis = useMemo(() => {
+    const rawStep = Math.ceil(monthlyMax / 4);
+    const niceStep = [10, 20, 25, 50, 100, 200].find((step) => step >= rawStep) ?? Math.ceil(rawStep / 100) * 100;
+    const top = niceStep * 4;
+    return [top, top - niceStep, top - niceStep * 2, top - niceStep * 3, 0];
+  }, [monthlyMax]);
 
   const kpis = useMemo(
     () => KPI_ITEMS.map((item) => {
@@ -111,15 +142,61 @@ export default function AdminDashboard() {
         ))}
       </div>
 
-      <div className="grid grid-cols-1 gap-4">
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+        <div className="xl:col-span-2 bg-white dark:bg-slate-800 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-sm p-5">
+          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+            <div>
+              <h2 className="text-xl font-semibold text-slate-900 dark:text-white">Monthly Bookings</h2>
+              <p className="text-base text-slate-600 dark:text-slate-400 mt-1">Jan - Jun {new Date().getFullYear()}</p>
+            </div>
+            <div className="text-base font-semibold text-slate-700 dark:text-slate-300">Total {bookings.length}</div>
+          </div>
+          <div className="mt-6 grid grid-cols-[auto_1fr] gap-3 items-end h-56">
+            <div className="flex flex-col justify-between items-end text-sm text-slate-500 dark:text-slate-400 h-full">
+              {monthlyAxis.map((value) => (
+                <span key={value} className="leading-tight">{value}</span>
+              ))}
+            </div>
+            <div className="relative h-full w-full border border-slate-200 dark:border-slate-700 rounded-3xl bg-slate-50 dark:bg-slate-900 p-4">
+              <div className="absolute inset-0 grid grid-rows-4">
+                {Array.from({ length: 4 }).map((_, idx) => (
+                  <div key={idx} className="border-t border-slate-200 dark:border-slate-700/60" />
+                ))}
+              </div>
+              <div className="relative z-10 h-full flex items-end gap-3">
+                {['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'].map((label, index) => {
+                  const value = monthlyCounts[index];
+                  const height = Math.round((value / monthlyAxis[0]) * 100);
+                  const currentMonth = new Date().getMonth();
+                  const isActive = currentMonth === index;
+                  return (
+                    <div key={label} className="flex flex-col items-center gap-2 w-full">
+                      <div className="flex h-full w-full items-end justify-center">
+                        <div
+                          className={`w-full rounded-t-3xl ${isActive ? 'bg-slate-900 dark:bg-slate-200' : 'bg-slate-700 dark:bg-slate-400'}`}
+                          style={{ height: `${height}%` }}
+                        />
+                      </div>
+                      <div className="text-sm font-semibold text-slate-700 dark:text-slate-200">{label}</div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </div>
+
         <div className="bg-white dark:bg-slate-800 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-sm p-5">
-          <div className="flex items-start justify-between gap-3">
+          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
             <div>
               <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Status Breakdown</h2>
               <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Current booking distribution by status</p>
             </div>
-            <div className="rounded-2xl bg-slate-100 dark:bg-slate-900 px-3 py-2 text-xs font-semibold text-slate-600 dark:text-slate-300">
-              {bookings.length} bookings
+            <div className="flex flex-col items-start sm:items-end gap-1">
+              <div className="rounded-2xl bg-slate-100 dark:bg-slate-900 px-3 py-2 text-xs font-semibold text-slate-600 dark:text-slate-300">
+                {bookings.length} bookings
+              </div>
+              <div className="text-xs text-slate-500 dark:text-slate-400">Updated {lastRefreshed || '...'}</div>
             </div>
           </div>
           <div className="mt-6 space-y-4">
@@ -130,7 +207,10 @@ export default function AdminDashboard() {
                   <span>{item.value}</span>
                 </div>
                 <div className="h-2 rounded-full bg-slate-100 dark:bg-slate-900 overflow-hidden">
-                  <div className={`${item.color} h-full`} style={{ width: `${Math.max(item.value * 10, 10)}%` }} />
+                  <div
+                    className={`${item.value === 0 ? 'bg-transparent' : item.color} h-full`}
+                    style={{ width: `${item.value === 0 ? 0 : Math.max(item.value * 10, 10)}%` }}
+                  />
                 </div>
               </div>
             ))}

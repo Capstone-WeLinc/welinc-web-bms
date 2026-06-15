@@ -105,12 +105,28 @@ export default function Login() {
       setUser(userData);
       navigate(getRoleDashboard(userData.role));
     } catch (error: unknown) {
-      const err = error as { response?: { status?: number }; message?: string };
-      if (err.response?.status === 401) {
+      const err = error as {
+        response?: { status?: number; data?: { message?: string | string[] } };
+        message?: string;
+      };
+      const status = err.response?.status;
+      const serverMessage = err.response?.data?.message;
+      const formattedServerMessage = Array.isArray(serverMessage)
+        ? serverMessage.join(' ')
+        : serverMessage;
+
+      if (status === 401) {
         setError('Invalid username or password');
+      } else if (status === 403) {
+        setError(
+          formattedServerMessage ||
+            'Login failed: access denied. Contact your administrator if you think this is an error.',
+        );
       } else {
         setError(
-          err.message
+          formattedServerMessage
+            ? `Login failed: ${formattedServerMessage}`
+            : err.message
             ? `Login failed: ${err.message}`
             : 'Unable to connect to the authentication server. Please try again.',
         );
