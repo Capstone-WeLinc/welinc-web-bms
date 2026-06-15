@@ -1,0 +1,5 @@
+feat: BMS frontend restructure and login page update
+
+- Restructured file paths to project root (removed OneDrive path artifacts)
+- Updated login page with WeLinc Logistics Portal branding
+- All existing BMS frontend pages and components intact
