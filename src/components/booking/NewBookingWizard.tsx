@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Dialog, DialogContent } from '../../components/ui/Dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/Select';
 import {
@@ -97,6 +97,35 @@ function buildId() {
 }
 const fmt = (n: number) => `₱${n.toLocaleString()}`;
 
+// Validation helpers (module scope)
+function isValidContact(contact: string) {
+  if (!contact) return false;
+  const digits = contact.replace(/\D/g, '');
+  return digits.length >= 7 && digits.length <= 15;
+}
+function isValidZip(zip: string) {
+  if (!zip) return true; // optional field — validate only if provided
+  return /^\d{3,6}$/.test(zip);
+}
+function isValidAddress(address: string) {
+  if (!address) return true; // optional field — validate only if provided
+  return /^[\w\d\s\.,#\-/()]+$/.test(address.trim());
+}
+function isValidItemCount(value: string) {
+  const count = Number(value);
+  return Number.isInteger(count) && count > 0;
+}
+function isValidText(value: string) {
+  return !!value.trim();
+}
+function isDateInPast(dateStr: string) {
+  if (!dateStr) return false;
+  const sel = new Date(dateStr + 'T00:00:00');
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return sel < today;
+}
+
 // ─── Root ─────────────────────────────────────────────────────────────────────
 export default function NewBookingWizard({ open, onClose, onConfirm }: Props) {
   const [step, setStep] = useState(1);
@@ -128,13 +157,16 @@ export default function NewBookingWizard({ open, onClose, onConfirm }: Props) {
     }));
   }
 
+  
   // Validation
   const canNext: Record<number, boolean> = {
     1: !!d.serviceType && (isU2U || !!d.truckType),
-    2: !!d.firstName && !!d.lastName && !!d.contact && !!d.categoryCode &&
+    2: !!d.firstName && !!d.lastName && !!d.contact && isValidContact(d.contact) && !!d.categoryCode &&
       !!d.pickupCity && !!d.pickupBarangay && !!d.deliveryCity && !!d.deliveryBarangay &&
-      !!d.pickupDate && !!d.pickupTime,
-    3: true, 4: true,
+      !!d.pickupDate && !!d.pickupTime && !isDateInPast(d.pickupDate) && isValidZip(d.pickupZip) && isValidZip(d.deliveryZip) &&
+      isValidAddress(d.pickupAddress) && isValidAddress(d.deliveryAddress) && isValidAddress(d.pickupExact) && isValidAddress(d.deliveryExact),
+    3: isValidItemCount(d.estimatedItems) && isValidText(d.itemDetails) && isValidText(d.specialInstructions),
+    4: true,
     5: !!d.paymentMethod && d.agreeToTerms,
     6: false,
   };
@@ -317,6 +349,39 @@ function S2({ d, set, pArea, dArea, pBrgy, dBrgy, setCat, isU2U }: {
   pBrgy: string[]; dBrgy: string[];
   setCat: (code: string) => void; isU2U: boolean;
 }) {
+  // Keep exact address fields in sync with component parts and make them read-only
+  useEffect(() => {
+    const province = d.categoryCode ? getPickupArea(d.categoryCode) : '';
+    const allFilled = d.pickupAddress && d.pickupBarangay && d.pickupCity && province && d.pickupZip;
+    if (allFilled) {
+      const pComposed = [d.pickupAddress, d.pickupBarangay, d.pickupCity, province, d.pickupZip].filter(Boolean).join(', ');
+      if (pComposed !== d.pickupExact) set('pickupExact', pComposed);
+    } else if (d.pickupExact) {
+      // clear when not all parts provided
+      set('pickupExact', '');
+    }
+  }, [d.pickupAddress, d.pickupFloor, d.pickupRoom, d.pickupBarangay, d.pickupCity, d.pickupZip, d.categoryCode]);
+
+  useEffect(() => {
+    const province = d.categoryCode ? getDeliveryArea(d.categoryCode) : '';
+    const allFilled = d.deliveryAddress && d.deliveryBarangay && d.deliveryCity && province && d.deliveryZip;
+    if (allFilled) {
+      const dComposed = [d.deliveryAddress, d.deliveryBarangay, d.deliveryCity, province, d.deliveryZip].filter(Boolean).join(', ');
+      if (dComposed !== d.deliveryExact) set('deliveryExact', dComposed);
+    } else if (d.deliveryExact) {
+      set('deliveryExact', '');
+    }
+  }, [d.deliveryAddress, d.deliveryFloor, d.deliveryRoom, d.deliveryBarangay, d.deliveryCity, d.deliveryZip, d.categoryCode]);
+
+  const availableTimes = useMemo(() => {
+    if (!d.pickupDate) return TIME_SLOTS;
+    const today = new Date().toISOString().split('T')[0];
+    if (d.pickupDate !== today) return TIME_SLOTS;
+    const now = new Date();
+    const currentHour = now.getHours();
+    return TIME_SLOTS.filter((_, idx) => idx > currentHour);
+  }, [d.pickupDate]);
+
   return (
     <div className="p-5 space-y-5">
 
@@ -332,6 +397,7 @@ function S2({ d, set, pArea, dArea, pBrgy, dBrgy, setCat, isU2U }: {
           <Fld label="Contact Number *">
             <div className="relative"><Phone size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
               <input value={d.contact} onChange={e => set('contact', e.target.value)} placeholder="+63 9XX XXX XXXX" className={inp + ' pl-8'} /></div>
+            {d.contact && !isValidContact(d.contact) && <p className="text-xs text-red-600 mt-1">Please enter a valid contact number (digits only, 7–15 digits).</p>}
           </Fld>
         </div>
       </Sec>
@@ -379,14 +445,14 @@ function S2({ d, set, pArea, dArea, pBrgy, dBrgy, setCat, isU2U }: {
             <SI value={d.pickupBarangay} onChange={v => set('pickupBarangay', v)}
               options={pBrgy} placeholder={d.pickupCity ? 'Select barangay' : 'Select city first'} disabled={!d.pickupCity} />
           </Fld>
-          <Fld label="Address"><input value={d.pickupAddress} onChange={e => set('pickupAddress', e.target.value)} placeholder="Street / building" className={inp} /></Fld>
-          <Fld label="ZIP / Postal Code"><input value={d.pickupZip} onChange={e => set('pickupZip', e.target.value)} placeholder="e.g. 1600" className={inp} /></Fld>
+          <Fld label="Address"><input value={d.pickupAddress} onChange={e => set('pickupAddress', e.target.value)} placeholder="Street / building" className={inp} />{d.pickupAddress && !isValidAddress(d.pickupAddress) && <p className="text-xs text-red-600 mt-1">Please enter a valid pickup address.</p>}</Fld>
+          <Fld label="ZIP / Postal Code"><input value={d.pickupZip} onChange={e => set('pickupZip', e.target.value)} placeholder="e.g. 1600" className={inp} />{d.pickupZip && !isValidZip(d.pickupZip) && <p className="text-xs text-red-600 mt-1">ZIP must be 3–6 digits.</p>}</Fld>
           {isU2U && <>
             <Fld label="Floor Number"><input value={d.pickupFloor} onChange={e => set('pickupFloor', e.target.value)} placeholder="e.g. 3" className={inp} /></Fld>
             <Fld label="Room / Unit Number"><input value={d.pickupRoom} onChange={e => set('pickupRoom', e.target.value)} placeholder="e.g. 3B" className={inp} /></Fld>
           </>}
           <div className="sm:col-span-2">
-            <Fld label="Pickup Exact Address"><input value={d.pickupExact} onChange={e => set('pickupExact', e.target.value)} placeholder="Complete pickup address for the crew" className={inp} /></Fld>
+            <Fld label="Pickup Exact Address"><input value={d.pickupExact} disabled placeholder="Complete pickup address for the crew" className={inp} />{d.pickupExact && !isValidAddress(d.pickupExact) && <p className="text-xs text-red-600 mt-1">Please enter a valid pickup exact address.</p>}</Fld>
           </div>
         </div>
       </Sec>
@@ -402,14 +468,14 @@ function S2({ d, set, pArea, dArea, pBrgy, dBrgy, setCat, isU2U }: {
             <SI value={d.deliveryBarangay} onChange={v => set('deliveryBarangay', v)}
               options={dBrgy} placeholder={d.deliveryCity ? 'Select barangay' : 'Select city first'} disabled={!d.deliveryCity} />
           </Fld>
-          <Fld label="Address"><input value={d.deliveryAddress} onChange={e => set('deliveryAddress', e.target.value)} placeholder="Street / building" className={inp} /></Fld>
-          <Fld label="ZIP / Postal Code"><input value={d.deliveryZip} onChange={e => set('deliveryZip', e.target.value)} placeholder="e.g. 4117" className={inp} /></Fld>
+          <Fld label="Address"><input value={d.deliveryAddress} onChange={e => set('deliveryAddress', e.target.value)} placeholder="Street / building" className={inp} />{d.deliveryAddress && !isValidAddress(d.deliveryAddress) && <p className="text-xs text-red-600 mt-1">Please enter a valid delivery address.</p>}</Fld>
+          <Fld label="ZIP / Postal Code"><input value={d.deliveryZip} onChange={e => set('deliveryZip', e.target.value)} placeholder="e.g. 4117" className={inp} />{d.deliveryZip && !isValidZip(d.deliveryZip) && <p className="text-xs text-red-600 mt-1">ZIP must be 3–6 digits.</p>}</Fld>
           {isU2U && <>
             <Fld label="Floor Number"><input value={d.deliveryFloor} onChange={e => set('deliveryFloor', e.target.value)} placeholder="e.g. 5" className={inp} /></Fld>
             <Fld label="Room / Unit Number"><input value={d.deliveryRoom} onChange={e => set('deliveryRoom', e.target.value)} placeholder="e.g. 5A" className={inp} /></Fld>
           </>}
           <div className="sm:col-span-2">
-            <Fld label="Drop-off Full Address"><input value={d.deliveryExact} onChange={e => set('deliveryExact', e.target.value)} placeholder="Complete drop-off address for the crew" className={inp} /></Fld>
+            <Fld label="Drop-off Full Address"><input value={d.deliveryExact} disabled placeholder="Complete drop-off address for the crew" className={inp} />{d.deliveryExact && !isValidAddress(d.deliveryExact) && <p className="text-xs text-red-600 mt-1">Please enter a valid drop-off address.</p>}</Fld>
           </div>
         </div>
       </Sec>
@@ -420,10 +486,11 @@ function S2({ d, set, pArea, dArea, pBrgy, dBrgy, setCat, isU2U }: {
           <Fld label="Pickup Date *">
             <div className="relative"><Calendar size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
               <input type="date" value={d.pickupDate} onChange={e => set('pickupDate', e.target.value)} min={new Date().toISOString().split('T')[0]} className={inp + ' pl-8'} /></div>
+            {d.pickupDate && isDateInPast(d.pickupDate) && <p className="text-xs text-red-600 mt-1">Pickup date cannot be in the past.</p>}
           </Fld>
           <Fld label="Pickup Time *">
             <div className="relative"><Clock size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none z-10" />
-              <SI value={d.pickupTime} onChange={v => set('pickupTime', v)} options={TIME_SLOTS} placeholder="Select time" className="pl-8" /></div>
+              <SI value={d.pickupTime} onChange={v => set('pickupTime', v)} options={availableTimes} placeholder="Select time" className="pl-8" /></div>
           </Fld>
         </div>
       </Sec>
@@ -456,13 +523,16 @@ function S3({ d, set, expanded, setExpanded, toggleSvc, selectedSvcs, svcTotal }
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Fld label="Estimated Number of Items">
             <input type="number" min="1" value={d.estimatedItems} onChange={e => set('estimatedItems', e.target.value)} placeholder="e.g. 15" className={inp} />
+            {d.estimatedItems !== '' && !isValidItemCount(d.estimatedItems) && <p className="text-xs text-red-600 mt-1">Enter a valid positive item count.</p>}
           </Fld>
           <Fld label="Item Details">
             <textarea value={d.itemDetails} onChange={e => set('itemDetails', e.target.value)} placeholder="Sofa, ref, boxes..." rows={3} className={ta} />
+            {d.itemDetails !== '' && !isValidText(d.itemDetails) && <p className="text-xs text-red-600 mt-1">Please add item details.</p>}
           </Fld>
           <div className="sm:col-span-2">
             <Fld label="Special Instructions">
               <textarea value={d.specialInstructions} onChange={e => set('specialInstructions', e.target.value)} placeholder="Access codes, fragile notes, parking info..." rows={2} className={ta} />
+              {d.specialInstructions !== '' && !isValidText(d.specialInstructions) && <p className="text-xs text-red-600 mt-1">Please add special instructions.</p>}
             </Fld>
           </div>
         </div>

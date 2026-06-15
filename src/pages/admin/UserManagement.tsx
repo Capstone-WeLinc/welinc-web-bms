@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Search, Plus, Edit2, Trash2, Eye, EyeOff } from 'lucide-react';
+import { Search, Plus, Edit2, Trash2, Lock, Eye, EyeOff } from 'lucide-react';
 import StatusBadge from '../../components/shared/StatusBadge';
 import KPICard from '../../components/shared/KpiCard';
 import { useApp } from '../../contexts/AppContext';
@@ -22,6 +22,7 @@ export interface User {
   password?: string;
   role: UserRole;
   status: UserStatus;
+  isLocked: boolean;
   createdAt: string;
   initials: string;
 }
@@ -33,6 +34,7 @@ type BackendUser = {
   name: string;
   username: string;
   isActive: boolean;
+  isLocked: boolean;
   createdAt: string;
   roles: Array<{ role: BackendUserRole; system: string }>;
 };
@@ -74,6 +76,7 @@ function formatBackendUser(user: BackendUser): User {
     username: user.username,
     role: mapBackendRole(systemRole?.role ?? 'CUSTOMER_SUPPORT'),
     status: user.isActive ? 'Active' : 'Deactivated',
+    isLocked: user.isLocked,
     createdAt: new Date(user.createdAt).toISOString().split('T')[0],
     initials: user.name
       .split(/\s+/)
@@ -95,8 +98,10 @@ export default function Users() {
   const [showConfirm, setShowConfirm] = useState(false);
   const [formError, setFormError] = useState('');
   const [deleteUser, setDeleteUser] = useState<User | null>(null);
+  const [unlockingUserId, setUnlockingUserId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState('');
+  const [actionError, setActionError] = useState('');
 
   const CACHE_KEY = 'welinc_user_management_cache_v1';
 
@@ -141,6 +146,7 @@ export default function Users() {
 
   async function loadUsers() {
     setLoading(true);
+    setActionError('');
     setLoadError('');
     try {
       const response = await api.get<BackendUser[]>('/auth/users', {
@@ -258,6 +264,26 @@ export default function Users() {
     }
   }
 
+  async function handleUnlock(user: User) {
+    if (!user.isLocked) return;
+    setUnlockingUserId(user.id);
+    setActionError('');
+    try {
+      await api.patch(`/auth/users/${user.id}/unlock`);
+      await loadUsers();
+    } catch (error: unknown) {
+      console.error('Unable to unlock user', error);
+      const err = error as { response?: { status?: number; data?: { message?: string } }; message?: string };
+      setActionError(
+        err.response?.data?.message ||
+          err.message ||
+          'Unable to unlock user. Please try again.',
+      );
+    } finally {
+      setUnlockingUserId(null);
+    }
+  }
+
   return (
     <div className="space-y-5">
       {/* KPI Cards */}
@@ -266,6 +292,11 @@ export default function Users() {
           <KPICard key={k.label} label={k.label} value={String(k.value)} iconColor={k.color} />
         ))}
       </div>
+      {actionError && (
+        <div className="px-4 py-3 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-sm text-red-700 dark:text-red-300">
+          {actionError}
+        </div>
+      )}
 
       {/* Table */}
       <div className="bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-slate-200 dark:border-gray-800">
@@ -325,6 +356,14 @@ export default function Users() {
                           title={u.id === currentUser?.id ? 'Cannot delete your own account' : 'Delete User'}
                         >
                           <Trash2 size={13} />
+                        </button>
+                        <button
+                          onClick={() => handleUnlock(u)}
+                          disabled={!u.isLocked || unlockingUserId === u.id}
+                          className={`p-1.5 rounded-lg transition-colors cursor-pointer ${u.isLocked ? 'hover:bg-slate-100 dark:hover:bg-gray-700 text-slate-500 hover:text-[#1a1f6e]' : 'opacity-30 cursor-not-allowed text-slate-400 dark:text-gray-500'}`}
+                          title={u.isLocked ? 'Unlock User' : 'User is not locked'}
+                        >
+                          <Lock size={13} />
                         </button>
                       </div>
                     </td>

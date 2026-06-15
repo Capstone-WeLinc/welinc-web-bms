@@ -1,22 +1,16 @@
 import { useState } from 'react';
 import { useApp } from '../contexts/AppContext';
 import { useNavigate, useLocation } from 'react-router-dom';
-import {
-  LayoutDashboard, CalendarDays, Users, Settings,
-  Moon, LogOut, ChevronLeft, ChevronRight
-} from 'lucide-react';
+import { Moon, LogOut, ChevronLeft, ChevronRight } from 'lucide-react';
+import { getNavItems, getRoleDashboard } from '../lib/auth';
+import type { UserRole } from '../lib/types';
 
-const navItems = [
-  { icon: LayoutDashboard, label: 'Dashboard', path: '/admin/dashboard', desc: '' },
-  { icon: CalendarDays, label: 'Booking', path: '/admin/bookings', desc: '' },
-  // { icon: CalendarDays, label: 'Scheduling', path: '/admin/scheduling', desc: '' },
-  // { icon: FileText, label: 'Job Orders', path: '/admin/job-orders', desc: '' },
-  // { icon: Truck, label: 'Vehicle & Team Availability', path: '/admin/availability', desc: '' },
-  // { icon: ClipboardCheck, label: 'Post-Service', path: '/admin/post-service', desc: '' },
-  { icon: Users, label: 'User Management', path: '/admin/users', desc: '' },
-  // { icon: BarChart2, label: 'Reports', path: '/admin/reports', desc: '' },
-  { icon: Settings, label: 'Settings', path: '/admin/settings', desc: '' },
-];
+const navItemsByRole = (role: UserRole | null) => {
+  if (!role) {
+    return [];
+  }
+  return getNavItems(role);
+};
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   const { user, logout, toggleDarkMode } = useApp();
@@ -60,7 +54,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         {!collapsed && (
           <button
             type="button"
-            onClick={() => navigate('/admin/profile')}
+            onClick={() => navigate(user ? getRoleDashboard(user.role as UserRole) : '/login')}
             className="w-full flex items-center gap-3 px-4 py-4 border-b border-white/10 text-left transition-colors hover:bg-white/10"
           >
             <div className="w-9 h-9 bg-yellow-400 rounded-full flex items-center justify-center text-[#1a1f6e] font-bold text-sm flex-shrink-0">
@@ -75,7 +69,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
         {/* Nav */}
         <nav className="flex-1 py-3 overflow-y-auto">
-          {navItems.map((item) => {
+          {navItemsByRole(user?.role ?? null).map((item) => {
             const isActive = location.pathname === item.path || location.pathname.startsWith(item.path + '/');
             return (
               <button
@@ -87,7 +81,6 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                 {!collapsed && (
                   <div>
                     <p className="text-sm font-medium">{item.label}</p>
-                    <p className="text-xs text-white/50">{item.desc}</p>
                   </div>
                 )}
               </button>
