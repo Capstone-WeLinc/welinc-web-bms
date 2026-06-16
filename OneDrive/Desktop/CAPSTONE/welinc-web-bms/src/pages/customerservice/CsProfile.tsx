@@ -45,8 +45,8 @@ export default function CsProfile() {
               <UserIcon className="h-5 w-5" />
             </div>
             <div>
-              <p className="text-xs uppercase tracking-[0.24em] text-slate-500 dark:text-slate-400">Username</p>
-              <p className="mt-1 font-semibold text-slate-900 dark:text-white">{user?.username || '—'}</p>
+              <p className="text-xs uppercase tracking-[0.24em] text-slate-500 dark:text-slate-400">Full Name</p>
+              <p className="mt-1 font-semibold text-slate-900 dark:text-white">{user?.fullName || '—'}</p>
             </div>
           </div>
 

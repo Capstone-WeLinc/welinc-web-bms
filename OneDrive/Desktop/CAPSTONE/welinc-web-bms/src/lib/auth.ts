@@ -96,7 +96,6 @@ export function getNavItems(role: UserRole): NavItem[] {
       return [
         { label: 'Dashboard', path: '/cs/dashboard', icon: LayoutDashboard, subtitle: 'Overview' },
         { label: 'Bookings', path: '/cs/bookings', icon: ClipboardList, subtitle: 'Client requests' },
-        { label: 'Profile', path: '/cs/profile', icon: UserIcon, subtitle: 'Your profile' },
         { label: 'Settings', path: '/cs/settings', icon: Settings, subtitle: 'Preferences' },
       ];
     default:

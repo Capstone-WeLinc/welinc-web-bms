@@ -34,7 +34,7 @@ export default function AdminSettings() {
           </div>
       </div>
 
-     s
+     
 
       {/* Account Info */}
       <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700 p-5">

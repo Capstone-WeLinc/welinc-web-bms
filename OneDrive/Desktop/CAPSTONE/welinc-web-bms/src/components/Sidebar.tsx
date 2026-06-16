@@ -54,7 +54,24 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         {!collapsed && (
           <button
             type="button"
-            onClick={() => navigate(user ? getRoleDashboard(user.role as UserRole) : '/login')}
+            onClick={() => {
+              if (!user) {
+                navigate('/login');
+                return;
+              }
+              switch (user.role) {
+                case 'Administrator':
+                  navigate('/admin/profile');
+                  break;
+                case 'Customer Service':
+                  navigate('/cs/profile');
+                  break;
+                case 'Operations':
+                default:
+                  navigate('/operations/dashboard');
+                  break;
+              }
+            }}
             className="w-full flex items-center gap-3 px-4 py-4 border-b border-white/10 text-left transition-colors hover:bg-white/10"
           >
             <div className="w-9 h-9 bg-yellow-400 rounded-full flex items-center justify-center text-[#1a1f6e] font-bold text-sm flex-shrink-0">
