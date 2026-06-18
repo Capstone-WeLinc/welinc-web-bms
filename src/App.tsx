@@ -14,6 +14,9 @@ import LogIn from './pages/auth/LogIn';
 import BookingModule from './pages/admin/BookingModule';
 import Scheduling from './pages/admin/Scheduling';
 import OperationsDashboard from './pages/operations/OperationsDashboard';
+import Vehicles from './pages/admin/Vehicles';
+import Garages from './pages/admin/Garages';
+import Drivers from './pages/admin/Drivers';
 import { getRoleDashboard } from './lib/auth';
 
 function App() {
@@ -61,6 +64,36 @@ function App() {
             <ProtectedRoute allowedRoles={['Administrator']}>
               <Layout>
                 <Users />
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/vehicles"
+          element={
+            <ProtectedRoute allowedRoles={['Administrator']}>
+              <Layout>
+                <Vehicles />
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/garages"
+          element={
+            <ProtectedRoute allowedRoles={['Administrator']}>
+              <Layout>
+                <Garages />
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/drivers"
+          element={
+            <ProtectedRoute allowedRoles={['Administrator']}>
+              <Layout>
+                <Drivers />
               </Layout>
             </ProtectedRoute>
           }

@@ -18,7 +18,7 @@ export type UserStatus = 'Active' | 'Pending' | 'Inactive' | 'Deactivated';
 export interface User {
   id: string;
   fullName: string;
-  username: string;
+  email: string;
   password?: string;
   role: UserRole;
   status: UserStatus;
@@ -32,7 +32,7 @@ type BackendUserRole = 'ADMIN' | 'OPERATIONS' | 'CUSTOMER_SUPPORT' | 'MECHANIC';
 type BackendUser = {
   id: string;
   name: string;
-  username: string;
+  email: string;
   isActive: boolean;
   isLocked: boolean;
   createdAt: string;
@@ -44,7 +44,7 @@ const STATUSES: UserStatus[] = ['Active'];
 
 interface UserForm {
   fullName: string;
-  username: string;
+  email: string;
   role: UserRole;
   status: UserStatus;
   password: string;
@@ -52,7 +52,7 @@ interface UserForm {
 }
 
 const emptyForm: UserForm = {
-  fullName: '', username: '', role: 'Customer Service', status: 'Active', password: '', confirmPassword: '',
+  fullName: '', email: '', role: 'Customer Service', status: 'Active', password: '', confirmPassword: '',
 };
 
 function mapFrontendRoleToBackend(role: UserRole): BackendUserRole {
@@ -73,7 +73,7 @@ function formatBackendUser(user: BackendUser): User {
   return {
     id: user.id,
     fullName: user.name,
-    username: user.username,
+    email: user.email,
     role: mapBackendRole(systemRole?.role ?? 'CUSTOMER_SUPPORT'),
     status: user.isActive ? 'Active' : 'Deactivated',
     isLocked: user.isLocked,
@@ -127,7 +127,7 @@ export default function Users() {
 
   const filtered = users.filter(u =>
     u.fullName.toLowerCase().includes(search.toLowerCase()) ||
-    u.username.toLowerCase().includes(search.toLowerCase())
+    u.email.toLowerCase().includes(search.toLowerCase())
   );
 
   const kpis = [
@@ -184,24 +184,43 @@ export default function Users() {
 
   function openEdit(u: User) {
     setEditUser(u);
-    setForm({ fullName: u.fullName, username: u.username, role: u.role, status: u.status, password: '', confirmPassword: '' });
+    setForm({ fullName: u.fullName, email: u.email, role: u.role, status: u.status, password: '', confirmPassword: '' });
     setFormError('');
     setShowModal(true);
   }
 
   async function handleSave() {
     setFormError('');
-    if (!form.fullName.trim() || !form.username.trim()) {
-      setFormError('Full name and username are required.');
+    if (!form.fullName.trim() || !form.email.trim()) {
+      setFormError('Full name and email are required.');
       return;
     }
-    if (!editUser && !form.password) {
-      setFormError('Password is required for new users.');
-      return;
-    }
-    if (form.password && form.password !== form.confirmPassword) {
-      setFormError('Passwords do not match.');
-      return;
+    if (form.password) {
+      if (form.password !== form.confirmPassword) {
+        setFormError('Passwords do not match.');
+        return;
+      }
+      const trimmed = form.password.trim();
+      if (trimmed.length < 8) {
+        setFormError('Password must be at least 8 characters.');
+        return;
+      }
+      if (!/[A-Z]/.test(trimmed)) {
+        setFormError('Password must include at least one uppercase letter.');
+        return;
+      }
+      if (!/[a-z]/.test(trimmed)) {
+        setFormError('Password must include at least one lowercase letter.');
+        return;
+      }
+      if (!/\d/.test(trimmed)) {
+        setFormError('Password must include at least one number.');
+        return;
+      }
+      if (!/[^A-Za-z0-9]/.test(trimmed)) {
+        setFormError('Password must include at least one special character.');
+        return;
+      }
     }
 
     // Debug: Check token availability
@@ -213,7 +232,7 @@ export default function Users() {
 
     const payload: Record<string, unknown> = {
       name: form.fullName.trim(),
-      username: form.username.trim(),
+      email: form.email.trim(),
       isActive: form.status === 'Active',
       roleAssignments: [
         {
@@ -306,7 +325,7 @@ export default function Users() {
             <input
               value={search}
               onChange={e => setSearch(e.target.value)}
-              placeholder="Search by name or username..."
+              placeholder="Search by name or email..."
               className="w-full pl-8 pr-4 py-2 text-sm border border-slate-200 dark:border-gray-700 rounded-lg bg-transparent focus:outline-none focus:ring-2 focus:ring-[#1a1f6e]/20 dark:text-white placeholder:text-slate-400"
             />
           </div>
@@ -324,7 +343,7 @@ export default function Users() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-slate-100 dark:border-gray-800">
-                  {['User', 'Username', 'Role', 'Status', 'Created', 'Actions'].map(h => (
+                  {['User', 'Email Address', 'Role', 'Status', 'Created', 'Actions'].map(h => (
                     <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-slate-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap">{h}</th>
                   ))}
                 </tr>
@@ -340,7 +359,7 @@ export default function Users() {
                         <span className="font-medium text-slate-800 dark:text-white">{u.fullName}</span>
                       </div>
                     </td>
-                    <td className="px-4 py-3 font-mono text-xs text-slate-600 dark:text-gray-300">{u.username}</td>
+                    <td className="px-4 py-3 font-mono text-xs text-slate-600 dark:text-gray-300">{u.email}</td>
                     <td className="px-4 py-3">
                       <span className="text-xs px-2 py-1 rounded-full bg-[#1a1f6e]/10 text-[#1a1f6e] dark:bg-indigo-900/30 dark:text-indigo-300 font-medium whitespace-nowrap">{u.role}</span>
                     </td>
@@ -400,8 +419,8 @@ export default function Users() {
                 <Input className="h-9 text-sm bg-white dark:bg-slate-900" value={form.fullName} onChange={e => setForm(p => ({ ...p, fullName: e.target.value }))} placeholder="e.g., Maria Santos" />
               </div>
               <div className="col-span-2">
-                <Label className="text-xs text-slate-600 dark:text-gray-400 mb-1 block">Username <span className="text-red-500">*</span></Label>
-                <Input className="h-9 text-sm bg-white dark:bg-slate-900 w-full" value={form.username} onChange={e => setForm(p => ({ ...p, username: e.target.value }))} placeholder="e.g., msantos" />
+                <Label className="text-xs text-slate-600 dark:text-gray-400 mb-1 block">Email Address <span className="text-red-500">*</span></Label>
+                <Input className="h-9 text-sm bg-white dark:bg-slate-900 w-full" value={form.email} onChange={e => setForm(p => ({ ...p, email: e.target.value }))} placeholder="e.g., msantos@welinc.com" />
               </div>
               <div>
                 <Label className="text-xs text-slate-600 dark:text-gray-400 mb-1 block">Role</Label>
@@ -438,45 +457,47 @@ export default function Users() {
             </div>
 
             {/* Password section */}
-            <div className="border-t dark:border-gray-700 pt-3">
-              <p className="text-xs font-semibold text-slate-500 dark:text-gray-400 uppercase tracking-wide mb-2">
-                {editUser ? 'Change Password (leave blank to keep current)' : 'Set Password'}
-              </p>
-              <div className="space-y-2">
-                <div>
-                  <Label className="text-xs text-slate-600 dark:text-gray-400 mb-1 block">
-                    Password {!editUser && <span className="text-red-500">*</span>}
-                  </Label>
-                  <div className="relative">
-                    <Input
-                      className="h-9 text-sm pr-10 bg-white dark:bg-slate-900"
-                      type={showPass ? 'text' : 'password'}
-                      value={form.password}
-                      onChange={e => setForm(p => ({ ...p, password: e.target.value }))}
-                      placeholder={editUser ? 'New password...' : 'Create password...'}
-                    />
-                    <button type="button" onClick={() => setShowPass(p => !p)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer">
-                      {showPass ? <EyeOff size={14} /> : <Eye size={14} />}
-                    </button>
+            {editUser ? (
+              <div className="border-t dark:border-gray-700 pt-3">
+                <p className="text-xs font-semibold text-slate-500 dark:text-gray-400 uppercase tracking-wide mb-2">
+                  Change Password (leave blank to keep current)
+                </p>
+                <div className="space-y-2">
+                  <div>
+                    <Label className="text-xs text-slate-600 dark:text-gray-400 mb-1 block">
+                      New Password
+                    </Label>
+                    <div className="relative">
+                      <Input
+                        className="h-9 text-sm pr-10 bg-white dark:bg-slate-900"
+                        type={showPass ? 'text' : 'password'}
+                        value={form.password}
+                        onChange={e => setForm(p => ({ ...p, password: e.target.value }))}
+                        placeholder="New password..."
+                      />
+                      <button type="button" onClick={() => setShowPass(p => !p)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer">
+                        {showPass ? <EyeOff size={14} /> : <Eye size={14} />}
+                      </button>
+                    </div>
                   </div>
-                </div>
-                <div>
-                  <Label className="text-xs text-slate-600 dark:text-gray-400 mb-1 block">Confirm Password</Label>
-                  <div className="relative">
-                    <Input
-                      className="h-9 text-sm pr-10 bg-white dark:bg-slate-900"
-                      type={showConfirm ? 'text' : 'password'}
-                      value={form.confirmPassword}
-                      onChange={e => setForm(p => ({ ...p, confirmPassword: e.target.value }))}
-                      placeholder="Re-enter password..."
-                    />
-                    <button type="button" onClick={() => setShowConfirm(p => !p)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer">
-                      {showConfirm ? <EyeOff size={14} /> : <Eye size={14} />}
-                    </button>
+                  <div>
+                    <Label className="text-xs text-slate-600 dark:text-gray-400 mb-1 block">Confirm Password</Label>
+                    <div className="relative">
+                      <Input
+                        className="h-9 text-sm pr-10 bg-white dark:bg-slate-900"
+                        type={showConfirm ? 'text' : 'password'}
+                        value={form.confirmPassword}
+                        onChange={e => setForm(p => ({ ...p, confirmPassword: e.target.value }))}
+                        placeholder="Re-enter password..."
+                      />
+                      <button type="button" onClick={() => setShowConfirm(p => !p)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer">
+                        {showConfirm ? <EyeOff size={14} /> : <Eye size={14} />}
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
+            ) : null}
 
             <div className="flex justify-end gap-2 pt-1">
               <button onClick={() => setShowModal(false)} className="px-4 py-2 text-sm bg-slate-100 dark:bg-gray-700 text-slate-600 dark:text-gray-300 rounded-lg hover:bg-slate-200 whitespace-nowrap cursor-pointer">Cancel</button>
@@ -492,7 +513,7 @@ export default function Users() {
           <AlertDialogHeader>
             <AlertDialogTitle>Delete User Account?</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to permanently delete <strong>{deleteUser?.fullName}</strong> ({deleteUser?.username})? This action cannot be undone and will remove all access for this user.
+              Are you sure you want to permanently delete <strong>{deleteUser?.fullName}</strong> ({deleteUser?.email})? This action cannot be undone and will remove all access for this user.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

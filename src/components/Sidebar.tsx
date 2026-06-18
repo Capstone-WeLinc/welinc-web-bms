@@ -147,6 +147,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                 onClick={() => {
                   setShowLogoutConfirm(false);
                   logout();
+                  const portalUrl = import.meta.env.VITE_PORTAL_URL || 'http://localhost:8000';
+                  window.location.href = `${portalUrl}/login?logout=true`;
                 }}
                 className="rounded-xl bg-[#1a1f6e] px-4 py-2 text-sm font-semibold text-white hover:bg-[#151b4f]"
               >

@@ -8,11 +8,14 @@ import {
   Users,
   User as UserIcon,
   CalendarCheck,
+  Truck,
+  Building2,
+  UserCheck,
 } from 'lucide-react';
 
 export interface JwtPayload {
   sub: string;
-  username: string;
+  email: string;
   system: string;
   roles: { role: string; system: string }[];
 }
@@ -43,15 +46,14 @@ export function getCurrentUser(): User | null {
 
       return {
         id: decoded.sub,
-        username: decoded.username,
         role: mapBackendRole(primaryRole?.role ?? ''),
-        fullName: decoded.username,
-        email: '',
+        fullName: decoded.email,
+        email: decoded.email,
         contact: '',
         status: 'Active',
         createdAt: '',
-        initials: decoded.username
-          .split(/[.\s_-]+/)
+        initials: decoded.email
+          .split(/[.@\s_-]+/)
           .filter(Boolean)
           .slice(0, 2)
           .map((n) => n[0]?.toUpperCase())
@@ -85,6 +87,9 @@ export function getNavItems(role: UserRole): NavItem[] {
         { label: 'Dashboard', path: '/admin/dashboard', icon: LayoutDashboard, subtitle: 'Overview' },
         { label: 'Booking', path: '/admin/bookings', icon: ClipboardList, subtitle: 'Manage requests' },
         { label: 'Scheduling', path: '/admin/scheduling', icon: CalendarCheck, subtitle: 'Assign resources' },
+        { label: 'Fleet Vehicles', path: '/admin/vehicles', icon: Truck, subtitle: 'Manage fleet' },
+        { label: 'Garages', path: '/admin/garages', icon: Building2, subtitle: 'Manage garages' },
+        { label: 'Drivers', path: '/admin/drivers', icon: UserCheck, subtitle: 'Manage drivers' },
         { label: 'User Management', path: '/admin/users', icon: Users, subtitle: 'Account management' },
         { label: 'Settings', path: '/admin/settings', icon: Settings, subtitle: 'System preferences' },
       ];

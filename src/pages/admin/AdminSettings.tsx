@@ -45,7 +45,7 @@ export default function AdminSettings() {
         <div className="grid grid-cols-2 gap-3">
           {[
             { label: 'Full Name', value: user?.fullName },
-            { label: 'Username', value: user?.username },
+            { label: 'Email Address', value: user?.email },
             { label: 'Role', value: user?.role },
           ].map((f) => (
             <div key={f.label}>

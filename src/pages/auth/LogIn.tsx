@@ -8,7 +8,7 @@ import type { User, UserRole } from '../../lib/types';
 
 interface JwtPayload {
   sub: string;
-  username: string;
+  email: string;
   system: string;
   roles: {
     role: string;
@@ -38,9 +38,9 @@ type AuthenticatedUser = User & {
   roles: JwtPayload['roles'];
 };
 
-function getInitials(username: string) {
-  return username
-    .split(/[.\s_-]+/)
+function getInitials(email: string) {
+  return email
+    .split(/[.@\s_-]+/)
     .filter(Boolean)
     .slice(0, 2)
     .map((part) => part[0]?.toUpperCase())
@@ -48,18 +48,25 @@ function getInitials(username: string) {
 }
 
 export default function Login() {
-  const { setUser } = useApp();
+  const { user, setUser } = useApp();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [error, setError] = useState('');
 
   useEffect(() => {
+    if (user) {
+      navigate(getRoleDashboard(user.role), { replace: true });
+      return;
+    }
+
     const ssoToken = searchParams.get('token');
     if (!ssoToken) {
-      // If no token is provided, redirect directly to the unified portal
-      const portalUrl = import.meta.env.VITE_PORTAL_URL || 'http://localhost:5176';
-      window.location.href = `${portalUrl}/login`;
-      return;
+      // Delay redirect to allow any pending window.location.href assignments (e.g. from logout redirects) to take effect
+      const timer = setTimeout(() => {
+        const portalUrl = import.meta.env.VITE_PORTAL_URL || 'http://localhost:8000';
+        window.location.href = `${portalUrl}/login`;
+      }, 1000);
+      return () => clearTimeout(timer);
     }
 
     try {
@@ -78,14 +85,13 @@ export default function Login() {
       const role = mapBackendRole(bmsRole.role) as UserRole;
       const userData: AuthenticatedUser = {
         id: decoded.sub,
-        username: decoded.username,
         role,
-        fullName: decoded.username,
-        email: '',
+        fullName: decoded.email,
+        email: decoded.email,
         contact: '',
         status: 'Active',
         createdAt: '',
-        initials: getInitials(decoded.username),
+        initials: getInitials(decoded.email),
         system: decoded.system,
         roles: decoded.roles ?? [],
       };
@@ -112,7 +118,7 @@ export default function Login() {
             <p className="text-white/60 text-sm">{error}</p>
             <button
               onClick={() => {
-                const portalUrl = import.meta.env.VITE_PORTAL_URL || 'http://localhost:5176';
+                const portalUrl = import.meta.env.VITE_PORTAL_URL || 'http://localhost:8000';
                 window.location.href = `${portalUrl}/login`;
               }}
               className="mt-4 w-full bg-[#e8b800] hover:bg-[#d4a600] text-[#1a1f6e] font-bold py-2.5 rounded-xl transition-all cursor-pointer"

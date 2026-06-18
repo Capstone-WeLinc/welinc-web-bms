@@ -4,7 +4,6 @@ export type UserStatus = 'Active' | 'Pending' | 'Inactive' | 'Deactivated';
 export interface User {
   id: string;
   fullName: string;
-  username: string;
   password?: string;
   email: string;
   contact: string;

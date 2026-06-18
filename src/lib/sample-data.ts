@@ -169,12 +169,12 @@ export const SAMPLE_HELPERS: Helper[] = [
 
 
 export const SAMPLE_USERS: User[] = [
-  { id: 'u001', fullName: 'Maria Santos', username: 'msantos', email: 'msantos@welinc.ph', contact: '+63 917 123 4567', role: 'Administrator', status: 'Active', createdAt: '2025-01-10', initials: 'MS' },
-  { id: 'u002', fullName: 'Juan Dela Cruz', username: 'jdelacruz', email: 'jdelacruz@welinc.ph', contact: '+63 918 234 5678', role: 'Operations', status: 'Active', createdAt: '2025-02-14', initials: 'JD' },
-  { id: 'u003', fullName: 'Ana Reyes', username: 'areyes', email: 'areyes@welinc.ph', contact: '+63 919 345 6789', role: 'Customer Service', status: 'Active', createdAt: '2025-03-05', initials: 'AR' },
-  { id: 'u004', fullName: 'Ben Torres', username: 'btorres', email: 'btorres@welinc.ph', contact: '+63 920 456 7890', role: 'Operations', status: 'Active', createdAt: '2025-04-20', initials: 'BT' },
-  { id: 'u005', fullName: 'Carla Gomez', username: 'cgomez', email: 'cgomez@welinc.ph', contact: '+63 921 567 8901', role: 'Customer Service', status: 'Pending', createdAt: '2025-05-01', initials: 'CG' },
-  { id: 'u006', fullName: 'David Uy', username: 'duy', email: 'duy@welinc.ph', contact: '+63 922 678 9012', role: 'Operations', status: 'Inactive', createdAt: '2025-01-25', initials: 'DU' },
+  { id: 'u001', fullName: 'Maria Santos', email: 'msantos@welinc.ph', contact: '+63 917 123 4567', role: 'Administrator', status: 'Active', createdAt: '2025-01-10', initials: 'MS' },
+  { id: 'u002', fullName: 'Juan Dela Cruz', email: 'jdelacruz@welinc.ph', contact: '+63 918 234 5678', role: 'Operations', status: 'Active', createdAt: '2025-02-14', initials: 'JD' },
+  { id: 'u003', fullName: 'Ana Reyes', email: 'areyes@welinc.ph', contact: '+63 919 345 6789', role: 'Customer Service', status: 'Active', createdAt: '2025-03-05', initials: 'AR' },
+  { id: 'u004', fullName: 'Ben Torres', email: 'btorres@welinc.ph', contact: '+63 920 456 7890', role: 'Operations', status: 'Active', createdAt: '2025-04-20', initials: 'BT' },
+  { id: 'u005', fullName: 'Carla Gomez', email: 'cgomez@welinc.ph', contact: '+63 921 567 8901', role: 'Customer Service', status: 'Pending', createdAt: '2025-05-01', initials: 'CG' },
+  { id: 'u006', fullName: 'David Uy', email: 'duy@welinc.ph', contact: '+63 922 678 9012', role: 'Operations', status: 'Inactive', createdAt: '2025-01-25', initials: 'DU' },
 ];
 
 

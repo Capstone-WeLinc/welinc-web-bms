@@ -7,8 +7,8 @@ export default defineConfig(() => {
   const plugins: PluginOption[] = [];
   return {
     server: {
-      host: '127.0.0.1',
-      port: 5175,
+    host: true, // Bind to 0.0.0.0 — required for Docker
+      port: 8003,
     },
     plugins: plugins.filter(Boolean) as PluginOption[],
     resolve: {

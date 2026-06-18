@@ -31,3 +31,19 @@ api.interceptors.request.use((config) => {
   }
   return config;
 });
+
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      try {
+        localStorage.removeItem('token');
+        localStorage.removeItem('welinc_user');
+      } catch {
+        // ignore
+      }
+      window.location.href = '/login';
+    }
+    return Promise.reject(error);
+  }
+);
