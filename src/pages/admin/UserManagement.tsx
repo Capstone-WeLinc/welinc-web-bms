@@ -33,6 +33,7 @@ type BackendUser = {
   id: string;
   name: string;
   email: string;
+  emailVerified: boolean;
   isActive: boolean;
   isLocked: boolean;
   createdAt: string;
@@ -75,7 +76,7 @@ function formatBackendUser(user: BackendUser): User {
     fullName: user.name,
     email: user.email,
     role: mapBackendRole(systemRole?.role ?? 'CUSTOMER_SUPPORT'),
-    status: user.isActive ? 'Active' : 'Deactivated',
+    status: !user.emailVerified ? 'Pending' : (user.isActive ? 'Active' : 'Deactivated'),
     isLocked: user.isLocked,
     createdAt: new Date(user.createdAt).toISOString().split('T')[0],
     initials: user.name
