@@ -457,6 +457,48 @@ export default function Users() {
               </div>
             </div>
 
+            {/* Password section */}
+            {editUser ? (
+              <div className="border-t dark:border-gray-700 pt-3">
+                <p className="text-xs font-semibold text-slate-500 dark:text-gray-400 uppercase tracking-wide mb-2">
+                  Change Password (leave blank to keep current)
+                </p>
+                <div className="space-y-2">
+                  <div>
+                    <Label className="text-xs text-slate-600 dark:text-gray-400 mb-1 block">
+                      New Password
+                    </Label>
+                    <div className="relative">
+                      <Input
+                        className="h-9 text-sm pr-10 bg-white dark:bg-slate-900"
+                        type={showPass ? 'text' : 'password'}
+                        value={form.password}
+                        onChange={e => setForm(p => ({ ...p, password: e.target.value }))}
+                        placeholder="New password..."
+                      />
+                      <button type="button" onClick={() => setShowPass(p => !p)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer">
+                        {showPass ? <EyeOff size={14} /> : <Eye size={14} />}
+                      </button>
+                    </div>
+                  </div>
+                  <div>
+                    <Label className="text-xs text-slate-600 dark:text-gray-400 mb-1 block">Confirm Password</Label>
+                    <div className="relative">
+                      <Input
+                        className="h-9 text-sm pr-10 bg-white dark:bg-slate-900"
+                        type={showConfirm ? 'text' : 'password'}
+                        value={form.confirmPassword}
+                        onChange={e => setForm(p => ({ ...p, confirmPassword: e.target.value }))}
+                        placeholder="Re-enter password..."
+                      />
+                      <button type="button" onClick={() => setShowConfirm(p => !p)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer">
+                        {showConfirm ? <EyeOff size={14} /> : <Eye size={14} />}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : null}
 
             <div className="flex justify-end gap-2 pt-1">
               <button onClick={() => setShowModal(false)} className="px-4 py-2 text-sm bg-slate-100 dark:bg-gray-700 text-slate-600 dark:text-gray-300 rounded-lg hover:bg-slate-200 whitespace-nowrap cursor-pointer">Cancel</button>
