@@ -10,7 +10,7 @@ import { normalizeBookingStatus } from '../../lib/booking';
 import KPICard from '../../components/shared/KpiCard';
 import PageHeader from '../../components/pageheader/Pageheader';
 import { ActionRow, ScheduleJobRow, SectionCard, WatchRow } from '../../components/shared/DashboardSections';
-import { parseScheduleTime, ScheduleStatusBadge, toDateKey } from '../../components/scheduling/ScheduleCalendar';
+import { isPastScheduleTime, manilaNow, parseScheduleTime, ScheduleStatusBadge, toDateKey } from '../../components/scheduling/ScheduleCalendar';
 import { uniqueBookings, type CustomerServiceBooking } from '../customerservice/CsPostService';
 import { getLicenseExpiryStatus } from './VehicleAvailability';
 
@@ -42,7 +42,6 @@ const EMPTY_DATA: DashboardData = {
   approvals: { total: 0, booking: 0, collection: 0, refund: 0, overdue: 0, collectionAmount: 0, refundAmount: 0 },
 };
 const peso = new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP', maximumFractionDigits: 0 });
-const manilaDateKey = (date: Date) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Manila' }).format(date);
 const pickupValue = (schedule: ScheduleEntry) => schedule.pickupTime || schedule.time;
 const serviceDate = (booking: Booking) => String(booking.date ?? '').slice(0, 10);
 const keyToDate = (key: string) => new Date(`${key}T00:00:00Z`);
@@ -153,7 +152,7 @@ export default function AdminDashboard() {
     };
   }, [load]);
 
-  const today = manilaDateKey(new Date());
+  const today = manilaNow().dateKey;
   const { bookings, schedules, vehicles, drivers, jobOrders, postService, sales, approvals } = data;
 
   const revenue = useMemo(() => {
@@ -170,12 +169,18 @@ export default function AdminDashboard() {
     return { today: total(today), month: total(today.slice(0, 7)) };
   }, [bookings, sales, today]);
 
+  // Unassigned and its date or today's pickup time has passed: CS has to reschedule it, so it leaves Today's Jobs
+  // and counts as "Past Date, Not Assigned" instead.
+  const isPastUnassigned = (schedule: ScheduleEntry) => schedule.status === 'Unassigned' && isPastScheduleTime(schedule.date, pickupValue(schedule));
+
   const todaysJobs = useMemo(() => schedules
-    .filter(schedule => toDateKey(schedule.date) === today)
-    .sort((a, b) => (parseScheduleTime(pickupValue(a))?.minutes ?? Infinity) - (parseScheduleTime(pickupValue(b))?.minutes ?? Infinity)), [schedules, today]);
+    .filter(schedule => toDateKey(schedule.date) === today && !isPastUnassigned(schedule))
+    .sort((a, b) => (parseScheduleTime(pickupValue(a))?.minutes ?? Infinity) - (parseScheduleTime(pickupValue(b))?.minutes ?? Infinity)),
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  [schedules, today]);
 
   const watch = useMemo(() => ({
-    pastDue: schedules.filter(schedule => schedule.status === 'Unassigned' && toDateKey(schedule.date) < today).length,
+    pastDue: schedules.filter(isPastUnassigned).length,
     toDistribute: jobOrders.filter(order => order.status === 'Pending').length,
     issues: postService.filter(booking => booking.issueReported === true && booking.postServiceStatus !== 'Finalized').length,
     outOfService: vehicles.filter(vehicle => vehicle.status === 'UNDER_MAINTENANCE' || vehicle.status === 'UNDER_REPAIR').length,

@@ -9,6 +9,7 @@ import type {
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { DatePicker } from "./DatePicker";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./Select";
 import {
   Check,
   Download,
@@ -185,18 +186,21 @@ export const DropdownSelect = ({
   options,
   className = "",
 }: DropdownSelectProps) => (
-  <select
-    aria-label={label || "Select option"}
-    value={value}
-    onChange={(event) => onChange(event.target.value)}
-    className={`h-10 w-full rounded-xl border border-[#c8ced8] bg-white px-3 text-sm font-semibold text-[#141827] outline-none focus:border-[#070b45] focus:ring-2 focus:ring-[#070b45]/10 ${className}`}
-  >
-    {options.map((option) => (
-      <option key={option.value} value={option.value}>
-        {option.label}
-      </option>
-    ))}
-  </select>
+  <Select value={value} onValueChange={onChange}>
+    <SelectTrigger
+      aria-label={label || "Select option"}
+      className={`h-10 rounded-xl border-[#c8ced8] bg-white px-3 text-sm font-semibold text-[#141827] shadow-none focus:border-[#070b45] focus:ring-2 focus:ring-[#070b45]/10 ${className}`}
+    >
+      <SelectValue />
+    </SelectTrigger>
+    <SelectContent>
+      {options.map((option) => (
+        <SelectItem key={option.value} value={option.value}>
+          {option.label}
+        </SelectItem>
+      ))}
+    </SelectContent>
+  </Select>
 );
 
 export interface SortSelectOption {
@@ -220,18 +224,21 @@ export const SortSelect = ({
   className = "",
 }: SortSelectProps) => (
   <div className={`relative ${className}`}>
-    <select
-      aria-label={label || "Sort"}
-      value={value}
-      onChange={(event) => onChange(event.target.value)}
-      className="h-11 w-full appearance-none rounded-xl border border-[#c8ced8] bg-white pl-4 pr-10 text-sm font-semibold text-[#141827] outline-none transition focus:border-[#070b45] focus:ring-2 focus:ring-[#070b45]/10"
-    >
-      {options.map((option) => (
-        <option key={option.value} value={option.value}>
-          {option.label}
-        </option>
-      ))}
-    </select>
+    <Select value={value} onValueChange={onChange}>
+      <SelectTrigger
+        aria-label={label || "Sort"}
+        className="h-11 rounded-xl border-[#c8ced8] bg-white pl-4 pr-3 text-sm font-semibold text-[#141827] shadow-none transition focus:border-[#070b45] focus:ring-2 focus:ring-[#070b45]/10"
+      >
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {options.map((option) => (
+          <SelectItem key={option.value} value={option.value}>
+            {option.label}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
   </div>
 );
 

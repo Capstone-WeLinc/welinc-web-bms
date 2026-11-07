@@ -2,7 +2,7 @@ import ModalHeader from '../../components/ui/ModalHeader';
 import ScheduleDetailsDialog from '../../components/shared/ScheduleDetailsDialog';
 import TablePagination from '../../components/ui/TablePagination';
 import { useEffect, useMemo, useState } from 'react';
-import { Search, CalendarDays, List, Eye, Pencil, UserCheck, ChevronLeft, ChevronRight, MoreVertical } from 'lucide-react';
+import { Search, CalendarDays, List, Eye, Pencil, UserCheck, ChevronLeft, ChevronRight, MoreVertical, Plus, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '../../lib/api';
 import type { ScheduleEntry, Vehicle, Driver, Booking, Helper } from '../../lib/types';
@@ -55,12 +55,16 @@ export default function OperationsScheduling() {
   const [selectedVehicle, setSelectedVehicle] = useState('');
   const [selectedDriver, setSelectedDriver] = useState('');
   const [selectedHelpers, setSelectedHelpers] = useState<string[]>([]);
+  const [helperSlotCount, setHelperSlotCount] = useState(1);
   const [selectedGarage, setSelectedGarage] = useState('');
   const [selectedDeliveryType, setSelectedDeliveryType] = useState<'Inhouse' | 'Subcon' | ''>('');
   const [assigning, setAssigning] = useState(false);
   const [assignmentTouched, setAssignmentTouched] = useState<Record<AssignmentField, boolean>>(EMPTY_ASSIGNMENT_TOUCHED);
   const currentVehicle = vehicles.find((vehicle) => vehicle.id === selectedVehicle);
-  const helperSlots = Math.max(1, currentVehicle?.requiredHelpers ?? 1);
+  // Minimum number of helper fields that must be filled; users may add more via "Add Another Helper".
+  const minHelperSlots = Math.max(1, currentVehicle?.requiredHelpers ?? 1);
+  const helperSlots = Math.max(minHelperSlots, helperSlotCount);
+  const assignableHelpers = helpers.filter((helper) => helper.status === 'Available' || selectedHelpers.includes(helper.id));
 
   const now = new Date();
   const [calYear, setCalYear] = useState(now.getFullYear());
@@ -129,7 +133,7 @@ export default function OperationsScheduling() {
   async function handleAssign() {
     if (!assignTarget) return;
     const allTouched = { time: true, vehicle: true, driver: true, garage: true, deliveryType: true, helpers: true };
-    if (!assignTime || !selectedVehicle || !selectedDriver || !selectedGarage || !selectedDeliveryType || selectedHelpers.slice(0, helperSlots).filter(Boolean).length < helperSlots) {
+    if (!assignTime || !selectedVehicle || !selectedDriver || !selectedGarage || !selectedDeliveryType || selectedHelpers.slice(0, minHelperSlots).filter(Boolean).length < minHelperSlots) {
       setAssignmentTouched(allTouched);
       toast.error('Please complete all required assignment fields');
       return;
@@ -142,7 +146,7 @@ export default function OperationsScheduling() {
         garage: selectedGarage || undefined,
         deliveryType: selectedDeliveryType || undefined,
         dispatchTime: assignTime || undefined,
-        helperIds: selectedHelpers.slice(0, helperSlots),
+        helperIds: [...new Set(selectedHelpers.slice(0, helperSlots).filter(Boolean))],
       });
       toast.success('Truck and team assigned');
       setAssignTarget(null);
@@ -162,6 +166,7 @@ export default function OperationsScheduling() {
     setSelectedVehicle(s.vehicleId || '');
     setSelectedDriver(s.driverId || '');
     setSelectedHelpers(s.helperIds || []);
+    setHelperSlotCount(Math.max(1, s.helperIds?.length ?? 0));
     setSelectedGarage(s.garage || '');
     setSelectedDeliveryType(s.deliveryType || '');
     setAssignmentTouched(EMPTY_ASSIGNMENT_TOUCHED);
@@ -403,9 +408,9 @@ export default function OperationsScheduling() {
             </div>
             <div>
               <Label>Truck <span className="text-red-500">*</span></Label>
-              <Select value={selectedVehicle} onValueChange={(value) => { setSelectedVehicle(value); setSelectedHelpers([]); }}>
+              <Select value={selectedVehicle} onValueChange={(value) => { setSelectedVehicle(value); setSelectedHelpers([]); setHelperSlotCount(1); }}>
                 <SelectTrigger onBlur={() => touchAssignmentField('vehicle')} aria-required="true" aria-invalid={fieldError('vehicle', selectedVehicle)} className={fieldError('vehicle', selectedVehicle) ? 'border-red-500 focus:border-red-500 focus:ring-red-500/20' : ''}>
-                  <SelectValue placeholder="Select truck" />
+                  <SelectValue placeholder="Select or type a truck" />
                 </SelectTrigger>
                 <SelectContent>
                   {vehicles.filter((v) => v.status === 'Available' || v.id === selectedVehicle).map((v) => (
@@ -419,7 +424,7 @@ export default function OperationsScheduling() {
               <Label>Driver / Team <span className="text-red-500">*</span></Label>
               <Select value={selectedDriver} onValueChange={setSelectedDriver}>
                 <SelectTrigger onBlur={() => touchAssignmentField('driver')} aria-required="true" aria-invalid={fieldError('driver', selectedDriver)} className={fieldError('driver', selectedDriver) ? 'border-red-500 focus:border-red-500 focus:ring-red-500/20' : ''}>
-                  <SelectValue placeholder="Select driver" />
+                  <SelectValue placeholder="Select or type a driver" />
                 </SelectTrigger>
                 <SelectContent>
                   {drivers.map((d) => (
@@ -429,31 +434,52 @@ export default function OperationsScheduling() {
               </Select>
               {fieldError('driver', selectedDriver) && <p className="mt-1 text-xs font-medium text-red-600">Driver / Team is required.</p>}
             </div>
-            {Array.from({ length: helperSlots }, (_, index) => (
-              <div key={index}>
-                <Label>Helper {helperSlots > 1 ? index + 1 : ''} <span className="text-red-500">*</span></Label>
-                <Select value={selectedHelpers[index] || ''} onValueChange={(value) => setSelectedHelpers((current) => {
-                  const next = [...current];
-                  next[index] = value;
-                  return next;
-                })}>
-                  <SelectTrigger onBlur={() => touchAssignmentField('helpers')} aria-required="true" aria-invalid={assignmentTouched.helpers && !selectedHelpers[index]} className={assignmentTouched.helpers && !selectedHelpers[index] ? 'border-red-500 focus:border-red-500 focus:ring-red-500/20' : ''}>
-                    <SelectValue placeholder="Select helper" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {helpers.filter((helper) => (helper.status === 'Available' || selectedHelpers.includes(helper.id)) && (!selectedHelpers.includes(helper.id) || selectedHelpers[index] === helper.id)).map((helper) => (
-                      <SelectItem key={helper.id} value={helper.id}>{helper.fullName}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {assignmentTouched.helpers && !selectedHelpers[index] && <p className="mt-1 text-xs font-medium text-red-600">Helper is required.</p>}
-              </div>
-            ))}
+            {Array.from({ length: helperSlots }, (_, index) => {
+              const required = index < minHelperSlots;
+              const showError = required && assignmentTouched.helpers && !selectedHelpers[index];
+              return (
+                <div key={index}>
+                  <Label>Helper {helperSlots > 1 ? index + 1 : ''} {required ? <span className="text-red-500">*</span> : <span className="font-normal text-slate-500">(optional)</span>}</Label>
+                  <div className="flex items-center gap-2">
+                    <div className="min-w-0 flex-1">
+                      <Select value={selectedHelpers[index] || ''} onValueChange={(value) => setSelectedHelpers((current) => {
+                        const next = [...current];
+                        next[index] = value;
+                        return next;
+                      })}>
+                        <SelectTrigger onBlur={() => touchAssignmentField('helpers')} aria-required={required} aria-invalid={showError} className={showError ? 'border-red-500 focus:border-red-500 focus:ring-red-500/20' : ''}>
+                          <SelectValue placeholder="Select or type a helper" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {assignableHelpers.filter((helper) => !selectedHelpers.includes(helper.id) || selectedHelpers[index] === helper.id).map((helper) => (
+                            <SelectItem key={helper.id} value={helper.id}>{helper.fullName}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    {helperSlots > minHelperSlots && (
+                      <button type="button" onClick={() => {
+                        setSelectedHelpers((current) => current.slice(0, helperSlots).filter((_, i) => i !== index));
+                        setHelperSlotCount(Math.max(1, helperSlots - 1));
+                      }} aria-label={`Remove helper ${index + 1}`} title="Remove helper" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-slate-300 text-slate-500 hover:bg-red-50 hover:text-red-600">
+                        <X className="h-4 w-4" aria-hidden="true" />
+                      </button>
+                    )}
+                  </div>
+                  {showError && <p className="mt-1 text-xs font-medium text-red-600">Helper is required.</p>}
+                </div>
+              );
+            })}
+            <div>
+              <button type="button" onClick={() => setHelperSlotCount(helperSlots + 1)} disabled={helperSlots >= assignableHelpers.length} className="inline-flex items-center gap-1.5 rounded-md border border-dashed border-slate-400 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50">
+                <Plus className="h-4 w-4" aria-hidden="true" /> Add Another Helper
+              </button>
+            </div>
             <div>
               <Label>Garage / Branch <span className="text-red-500">*</span></Label>
               <Select value={selectedGarage} onValueChange={setSelectedGarage}>
                 <SelectTrigger onBlur={() => touchAssignmentField('garage')} aria-required="true" aria-invalid={fieldError('garage', selectedGarage)} className={fieldError('garage', selectedGarage) ? 'border-red-500 focus:border-red-500 focus:ring-red-500/20' : ''}>
-                  <SelectValue placeholder="Select garage" />
+                  <SelectValue placeholder="Select or type a garage" />
                 </SelectTrigger>
                 <SelectContent>
                   {GARAGES.map((g) => (
@@ -467,7 +493,7 @@ export default function OperationsScheduling() {
               <Label>Delivery Type <span className="text-red-500">*</span></Label>
               <Select value={selectedDeliveryType} onValueChange={(v) => setSelectedDeliveryType(v as 'Inhouse' | 'Subcon')}>
                 <SelectTrigger onBlur={() => touchAssignmentField('deliveryType')} aria-required="true" aria-invalid={fieldError('deliveryType', selectedDeliveryType)} className={fieldError('deliveryType', selectedDeliveryType) ? 'border-red-500 focus:border-red-500 focus:ring-red-500/20' : ''}>
-                  <SelectValue placeholder="Select type" />
+                  <SelectValue placeholder="Select or type a delivery type" />
                 </SelectTrigger>
                 <SelectContent>
                   {DELIVERY_TYPES.map((t) => (

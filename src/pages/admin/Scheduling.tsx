@@ -5,7 +5,7 @@ import PageHeader from '../../components/pageheader/Pageheader';
 import { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { UserCheck, Truck, CalendarCheck, Search, ClipboardList, Eye, Pencil, Clock3, Warehouse, PackageCheck, TruckIcon, ContactRound, UsersRound, TriangleAlert, MoreVertical, Check } from 'lucide-react';
+import { UserCheck, Truck, CalendarCheck, Search, ClipboardList, Eye, Pencil, Clock3, Warehouse, PackageCheck, TruckIcon, ContactRound, UsersRound, TriangleAlert, MoreVertical, Check, Plus, X } from 'lucide-react';
 import { api } from '../../lib/api';
 import { normalizeBookingStatus } from '../../lib/booking';
 import type { Booking, ScheduleEntry, Vehicle, Driver, Helper } from '../../lib/types';
@@ -14,7 +14,7 @@ import { Dialog, DialogContent } from '../../components/ui/Dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/Select';
 import { Label } from '../../components/ui/Label';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '../../components/ui/Dropdown';
-import ScheduleCalendar, { DeliveryTypeBadge, formatScheduleAddress, ScheduleStatusBadge, toDateKey, type ScheduleCrew } from '../../components/scheduling/ScheduleCalendar';
+import ScheduleCalendar, { DeliveryTypeBadge, formatScheduleAddress, isPastScheduleTime, ScheduleStatusBadge, toDateKey, type ScheduleCrew } from '../../components/scheduling/ScheduleCalendar';
 
 
 const GARAGES = ['Manila Hub', 'QC Depot', 'Cavite Branch', 'Laguna Branch'];
@@ -28,16 +28,43 @@ type ResourceTiming = { vehicles: Record<string, TimingResult>; drivers: Record<
 
 function pad2(n: number) { return String(n).padStart(2, '0'); }
 
-const PAST_DATE_REASON = 'The service date has passed. Customer Service needs to reschedule this booking before it can be assigned.';
+/** 0–23 hour and minute → "7:30 AM". */
+function format12Hour(hour24: number, minute: number) {
+  return `${hour24 % 12 || 12}:${pad2(minute)} ${hour24 >= 12 ? 'PM' : 'AM'}`;
+}
+
+type DispatchTimeOption = { value: string; minutes: number; keywords: string };
+
+/** Hidden search words so "730", "730p", "7:30pm", "0730" and "19:30" all find the right time. */
+function dispatchTimeOption(hour24: number, minute: number): DispatchTimeOption {
+  const hour12 = hour24 % 12 || 12;
+  const suffix = hour24 >= 12 ? 'pm' : 'am';
+  const mm = pad2(minute);
+  return {
+    value: format12Hour(hour24, minute),
+    minutes: hour24 * 60 + minute,
+    keywords: [`${hour12}${mm}${suffix}`, `${hour12}:${mm}${suffix}`, `${hour12}${mm}`, `${pad2(hour24)}:${mm}`, `${pad2(hour24)}${mm}`].join(' '),
+  };
+}
+
+/** Dispatch times every 15 minutes across the day. */
+const DISPATCH_TIME_OPTIONS: DispatchTimeOption[] = Array.from({ length: 96 }, (_, index) => dispatchTimeOption(Math.floor(index / 4), (index % 4) * 15));
+
+const PAST_DATE_REASON = 'The service date or pickup time has passed. Customer Service needs to reschedule this booking before it can be assigned.';
 
 /** Today in Manila, the calendar bookings are dated in. */
 function manilaToday() {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Manila', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
 }
 
-/** A booking whose service date is already behind us can't be assigned or re-assigned. */
+/**
+ * A booking whose service date is already behind us can't be assigned or re-assigned.
+ * An unassigned booking also counts as past once today's pickup time has gone by.
+ */
 function isPastDate(entry: ScheduleEntry) {
-  return Boolean(entry.date) && toDateKey(entry.date) < manilaToday();
+  if (!entry.date) return false;
+  if (toDateKey(entry.date) < manilaToday()) return true;
+  return entry.status === 'Unassigned' && isPastScheduleTime(entry.date, entry.pickupTime || entry.time);
 }
 
 function mapBookingToSchedule(booking: Booking): ScheduleEntry {
@@ -112,12 +139,10 @@ export default function Scheduling({ canAssign = true }: { canAssign?: boolean }
 
   // Assignment form state
   const [assignTime, setAssignTime] = useState('');
-  const [dispatchHour, setDispatchHour] = useState('');
-  const [dispatchMinute, setDispatchMinute] = useState('');
-  const [dispatchPeriod, setDispatchPeriod] = useState<'AM' | 'PM'>('AM');
   const [selectedVehicle, setSelectedVehicle] = useState('');
   const [selectedDriver, setSelectedDriver] = useState('');
   const [selectedHelpers, setSelectedHelpers] = useState<string[]>([]);
+  const [helperSlotCount, setHelperSlotCount] = useState(1);
   const [selectedGarage, setSelectedGarage] = useState('');
   const [selectedDeliveryType, setSelectedDeliveryType] = useState<'Inhouse' | 'Subcon' | ''>('');
   const [garages, setGarages] = useState<string[]>(GARAGES);
@@ -190,18 +215,18 @@ export default function Scheduling({ canAssign = true }: { canAssign?: boolean }
     const existingDispatchTime = entry.dispatchTime || '';
     const timeParts = existingDispatchTime.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
     const apiTimeParts = existingDispatchTime.match(/^([01]\d|2[0-3]):([0-5]\d)$/);
-    const hour24 = apiTimeParts ? Number(apiTimeParts[1]) : null;
-    const hour12 = hour24 === null ? Number(timeParts?.[1] ?? 0) : (hour24 % 12 || 12);
-    const period = apiTimeParts ? (hour24! >= 12 ? 'PM' : 'AM') : (timeParts?.[3]?.toUpperCase() ?? 'AM');
-    const displayTime = apiTimeParts ? `${hour12}:${apiTimeParts[2]} ${period}` : existingDispatchTime;
+    // Normalise to the "7:30 AM" format used by the time list.
+    const displayTime = apiTimeParts
+      ? format12Hour(Number(apiTimeParts[1]), Number(apiTimeParts[2]))
+      : timeParts
+        ? `${Number(timeParts[1])}:${timeParts[2]} ${timeParts[3].toUpperCase()}`
+        : '';
     setAssignTime(displayTime);
-    setDispatchHour(displayTime ? String(hour12) : '');
-    setDispatchMinute(apiTimeParts?.[2] ?? timeParts?.[2] ?? '');
-    setDispatchPeriod(period as 'AM' | 'PM');
     setSelectedVehicle(entry.vehicleId || '');
     const assignedDriver = getScheduleDriver(entry);
     setSelectedDriver(assignedDriver?.id || entry.driverId || '');
     setSelectedHelpers(entry.helperIds || []);
+    setHelperSlotCount(Math.max(1, entry.helperIds?.length ?? 0));
     setSelectedGarage(entry.garage || '');
     setSelectedDeliveryType(entry.deliveryType || '');
     setAssignmentTouched({});
@@ -213,31 +238,6 @@ export default function Scheduling({ canAssign = true }: { canAssign?: boolean }
 
   function getScheduleDriver(entry: ScheduleEntry) {
     return drivers.find(driver => driver.id === entry.driverId || driver.empId === entry.driverId || driver.fullName === entry.assignedDriverName);
-  }
-
-  function updateDispatchTime(hour: string, minute: string, period: 'AM' | 'PM') {
-    const parsedHour = Number(hour);
-    const parsedMinute = Number(minute);
-    if (parsedHour >= 1 && parsedHour <= 12 && parsedMinute >= 0 && parsedMinute <= 59) {
-      setAssignTime(`${parsedHour}:${pad2(parsedMinute)} ${period}`);
-    } else {
-      setAssignTime('');
-    }
-  }
-
-  function handleDispatchHourChange(value: string) {
-    setDispatchHour(value);
-    updateDispatchTime(value, dispatchMinute, dispatchPeriod);
-  }
-
-  function handleDispatchMinuteChange(value: string) {
-    setDispatchMinute(value);
-    updateDispatchTime(dispatchHour, value, dispatchPeriod);
-  }
-
-  function handleDispatchPeriodChange(value: 'AM' | 'PM') {
-    setDispatchPeriod(value);
-    updateDispatchTime(dispatchHour, dispatchMinute, value);
   }
 
   function handleStatusFilter(filter: 'All' | 'Assigned' | 'Unassigned' | 'Calendar') {
@@ -358,7 +358,9 @@ export default function Scheduling({ canAssign = true }: { canAssign?: boolean }
 
   const currentVehicle = vehicles.find(v => v.id === selectedVehicle);
   const requiredHelpers = currentVehicle?.requiredHelpers ?? 0;
-  const helperSlots = Math.max(1, requiredHelpers);
+  // Minimum number of helper fields that must be filled; users may add more via "Add Another Helper".
+  const minHelperSlots = Math.max(1, requiredHelpers);
+  const helperSlots = Math.max(minHelperSlots, helperSlotCount);
 
 
   function getAvailableVehicles() {
@@ -396,20 +398,29 @@ export default function Scheduling({ canAssign = true }: { canAssign?: boolean }
     setSelectedHelpers(prev => { const next = [...prev]; next[idx] = value; return next; });
   }
 
+  function handleAddHelperSlot() {
+    setHelperSlotCount(helperSlots + 1);
+  }
+
+  function handleRemoveHelperSlot(idx: number) {
+    setSelectedHelpers(prev => prev.slice(0, helperSlots).filter((_, index) => index !== idx));
+    setHelperSlotCount(Math.max(1, helperSlots - 1));
+  }
+
 
   async function handleAssign() {
     if (!canAssign || !assignTarget) return;
-    const requiredHelperValues = selectedHelpers.slice(0, helperSlots);
+    const requiredHelperValues = selectedHelpers.slice(0, minHelperSlots);
     const nextTouched: Record<string, boolean> = {
       time: true, garage: true, deliveryType: true, vehicle: true, driver: true,
     };
-    for (let index = 0; index < helperSlots; index += 1) nextTouched[`helper-${index}`] = true;
-    if (!assignTime || !selectedGarage || !selectedDeliveryType || !selectedVehicle || !selectedDriver || requiredHelperValues.filter(Boolean).length < helperSlots) {
+    for (let index = 0; index < minHelperSlots; index += 1) nextTouched[`helper-${index}`] = true;
+    if (!assignTime || !selectedGarage || !selectedDeliveryType || !selectedVehicle || !selectedDriver || requiredHelperValues.filter(Boolean).length < minHelperSlots) {
       setAssignmentTouched(nextTouched);
       toast.error('Please complete all required assignment fields.');
       return;
     }
-    const helpers = selectedHelpers.filter(Boolean).slice(0, helperSlots);
+    const helpers = [...new Set(selectedHelpers.slice(0, helperSlots).filter(Boolean))];
     
     try {
       // Call backend assign endpoint
@@ -447,6 +458,11 @@ export default function Scheduling({ canAssign = true }: { canAssign?: boolean }
   const availableVehicles = assignTarget ? getAvailableVehicles() : [];
   const availableDrivers = assignTarget ? getAvailableDrivers() : [];
   const availableHelpers = assignTarget ? getAvailableHelpers() : [];
+  // Keep an existing off-grid time (e.g. 7:20 AM) selectable alongside the 15-minute list.
+  const savedTime = assignTime.match(/^(\d{1,2}):(\d{2}) (AM|PM)$/);
+  const dispatchTimeOptions = savedTime && !DISPATCH_TIME_OPTIONS.some(option => option.value === assignTime)
+    ? [...DISPATCH_TIME_OPTIONS, dispatchTimeOption((Number(savedTime[1]) % 12) + (savedTime[3] === 'PM' ? 12 : 0), Number(savedTime[2]))].sort((a, b) => a.minutes - b.minutes)
+    : DISPATCH_TIME_OPTIONS;
 
 
   function getScheduleCrew(entry: ScheduleEntry): ScheduleCrew {
@@ -571,7 +587,7 @@ export default function Scheduling({ canAssign = true }: { canAssign?: boolean }
                         {s.deliveryType ? <DeliveryTypeBadge type={s.deliveryType} /> : <span className="text-sm text-slate-500">-</span>}
                       </td>
                       <td className="px-4 py-2.5 align-top">
-                        <ScheduleStatusBadge status={s.status} date={s.date} />
+                        <ScheduleStatusBadge status={s.status} date={s.date} time={s.pickupTime || s.time} />
                       </td>
                       <td className="px-4 py-2.5 align-top">
                         <div className="flex items-center justify-center">
@@ -588,7 +604,7 @@ export default function Scheduling({ canAssign = true }: { canAssign?: boolean }
                                 <>
                                   <DropdownMenuItem onSelect={() => openView(s)} className="w-fit gap-2 whitespace-nowrap rounded-lg px-3 py-2 text-sm text-slate-700"><Eye className="h-4 w-4" /> View</DropdownMenuItem>
                                   <DropdownMenuItem disabled className="w-fit gap-2 whitespace-nowrap rounded-lg px-3 py-2 text-sm text-slate-700">{s.status === 'Unassigned' ? <><ClipboardList className="h-4 w-4" /> Assign</> : <><Pencil className="h-4 w-4" /> Edit</>}</DropdownMenuItem>
-                                  <p className="max-w-[220px] px-3 pb-2 pt-0.5 text-xs leading-snug text-slate-500">Service date has passed. CS needs to reschedule this booking first.</p>
+                                  <p className="max-w-[220px] px-3 pb-2 pt-0.5 text-xs leading-snug text-slate-500">Service date or pickup time has passed. CS needs to reschedule this booking first.</p>
                                 </>
                               ) : s.status === 'Unassigned' ? (
                                 <DropdownMenuItem onSelect={() => openAssign(s)} className="w-fit gap-2 whitespace-nowrap rounded-lg px-3 py-2 text-sm text-slate-700"><ClipboardList className="h-4 w-4" /> Assign</DropdownMenuItem>
@@ -636,7 +652,7 @@ export default function Scheduling({ canAssign = true }: { canAssign?: boolean }
 
       {/* ─── Assignment Modal ─── */}
       {canAssign && <Dialog open={!!assignTarget} onOpenChange={open => { if (!open) { setAssignTarget(null); setAssignmentTouched({}); } }}>
-        <DialogContent hideCloseButton className="w-[calc(100%-2rem)] max-w-[760px] max-h-[90vh] flex flex-col overflow-hidden rounded-2xl border-0 bg-white p-0 shadow-[0_16px_40px_rgba(15,23,42,0.12)]">
+        <DialogContent hideCloseButton className="gap-0 w-[calc(100%-2rem)] max-w-[760px] max-h-[90vh] flex flex-col overflow-hidden rounded-2xl border-0 bg-white p-0 shadow-[0_16px_40px_rgba(15,23,42,0.12)]">
           {assignTarget && (
             <>
               <ModalHeader
@@ -697,17 +713,16 @@ export default function Scheduling({ canAssign = true }: { canAssign?: boolean }
                   <div className="grid grid-cols-1 gap-x-[18px] gap-y-4 sm:grid-cols-2">
                     <div>
                       <Label className="mb-1.5 block text-[13px] font-medium text-slate-700">Dispatch time <span className="text-red-600">*</span></Label>
-                      <div onBlurCapture={event => { if (!event.currentTarget.contains(event.relatedTarget as Node)) touchAssignmentField('time'); }} className="flex flex-wrap items-center gap-2">
-                        <Clock3 className="h-[18px] w-[18px] shrink-0 text-slate-500" aria-hidden="true" />
-                        <input type="text" inputMode="numeric" value={dispatchHour} onChange={event => handleDispatchHourChange(event.target.value)} placeholder="HH" aria-label="Dispatch hour" className="h-[42px] w-[62px] rounded-lg border border-slate-300 bg-white px-2 text-center text-sm text-slate-900 outline-none focus:border-[#1a1f6e] focus:ring-2 focus:ring-[#1a1f6e]/20" />
-                        <span className="text-sm text-slate-600">:</span>
-                        <input type="text" inputMode="numeric" value={dispatchMinute} onChange={event => handleDispatchMinuteChange(event.target.value)} placeholder="MM" aria-label="Dispatch minute" className="h-[42px] w-[62px] rounded-lg border border-slate-300 bg-white px-2 text-center text-sm text-slate-900 outline-none focus:border-[#1a1f6e] focus:ring-2 focus:ring-[#1a1f6e]/20" />
-                        <div className="inline-flex h-[42px] rounded-lg border border-slate-300 bg-white p-0.5" role="group" aria-label="Dispatch period">
-                          {(['AM', 'PM'] as const).map(period => (
-                            <button key={period} type="button" aria-pressed={dispatchPeriod === period} onClick={() => { setDispatchPeriod(period); updateDispatchTime(dispatchHour, dispatchMinute, period); }} className={`min-w-9 rounded-md px-2 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1a1f6e]/20 ${dispatchPeriod === period ? 'bg-[#030848] text-white' : 'text-slate-700 hover:bg-slate-50'}`}>{period}</button>
+                      <Select value={assignTime} onValueChange={setAssignTime}>
+                        <SelectTrigger onBlur={() => touchAssignmentField('time')} aria-label="Dispatch time" aria-required="true" aria-invalid={assignmentFieldError('time', assignTime)} className={`h-[42px] justify-start rounded-lg border border-slate-300 bg-white px-3 text-left text-sm text-slate-900 shadow-none [&>span]:flex-1 [&>svg:last-child]:ml-auto ${assignmentFieldError('time', assignTime) ? 'border-red-500' : ''}`}>
+                          <Clock3 className="mr-2 h-[18px] w-[18px] shrink-0 text-slate-500" aria-hidden="true" /><SelectValue placeholder="Select or type a time" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {dispatchTimeOptions.map(option => (
+                            <SelectItem key={option.value} value={option.value} keywords={option.keywords}>{option.value}</SelectItem>
                           ))}
-                        </div>
-                      </div>
+                        </SelectContent>
+                      </Select>
                       {assignmentFieldError('time', assignTime) ? <p className="mt-1.5 text-sm font-medium text-red-600">Dispatch time is required.</p> : <p className="mt-1.5 text-sm text-slate-600">Truck departure from garage</p>}
                     </div>
 
@@ -715,7 +730,7 @@ export default function Scheduling({ canAssign = true }: { canAssign?: boolean }
                       <Label className="mb-1.5 block text-[13px] font-medium text-slate-700">Delivery type <span className="text-red-600">*</span></Label>
                       <Select value={selectedDeliveryType} onValueChange={value => setSelectedDeliveryType(value as 'Inhouse' | 'Subcon' | '')}>
                         <SelectTrigger onBlur={() => touchAssignmentField('deliveryType')} aria-required="true" aria-invalid={assignmentFieldError('deliveryType', selectedDeliveryType)} className={`h-[42px] justify-start rounded-lg border border-slate-300 bg-white px-3 text-left text-sm text-slate-900 shadow-none focus:border-[#1a1f6e] focus:ring-2 focus:ring-[#1a1f6e]/20 [&>span]:flex-1 [&>span]:text-left [&>svg:last-child]:ml-auto ${assignmentFieldError('deliveryType', selectedDeliveryType) ? 'border-red-500 focus:border-red-500 focus:ring-red-500/20' : ''}`}>
-                          <PackageCheck className="mr-2 h-[18px] w-[18px] shrink-0 text-slate-500" aria-hidden="true" /><SelectValue placeholder="Select delivery type" />
+                          <PackageCheck className="mr-2 h-[18px] w-[18px] shrink-0 text-slate-500" aria-hidden="true" /><SelectValue placeholder="Select or type a delivery type" />
                         </SelectTrigger>
                         <SelectContent>{DELIVERY_TYPES.map(type => <SelectItem key={type} value={type}>{type}</SelectItem>)}</SelectContent>
                       </Select>
@@ -733,7 +748,7 @@ export default function Scheduling({ canAssign = true }: { canAssign?: boolean }
                       <Label className="mb-1.5 block text-[13px] font-medium text-slate-700">Garage (vehicle location) <span className="text-red-600">*</span></Label>
                       <Select value={selectedGarage} onValueChange={setSelectedGarage}>
                         <SelectTrigger onBlur={() => touchAssignmentField('garage')} aria-required="true" aria-invalid={assignmentFieldError('garage', selectedGarage)} className={`h-[42px] justify-start rounded-lg border border-slate-300 bg-white px-3 text-left text-sm text-slate-900 shadow-none focus:border-[#1a1f6e] focus:ring-2 focus:ring-[#1a1f6e]/20 [&>span]:flex-1 [&>span]:text-left [&>svg:last-child]:ml-auto ${assignmentFieldError('garage', selectedGarage) ? 'border-red-500 focus:border-red-500 focus:ring-red-500/20' : ''}`}>
-                          <Warehouse className="mr-2 h-[18px] w-[18px] shrink-0 text-slate-500" aria-hidden="true" /><SelectValue placeholder="Select garage" />
+                          <Warehouse className="mr-2 h-[18px] w-[18px] shrink-0 text-slate-500" aria-hidden="true" /><SelectValue placeholder="Select or type a garage" />
                         </SelectTrigger>
                         <SelectContent>{garages.map(garage => <SelectItem key={garage} value={garage}>{garage}</SelectItem>)}</SelectContent>
                       </Select>
@@ -742,9 +757,9 @@ export default function Scheduling({ canAssign = true }: { canAssign?: boolean }
 
                     <div>
                       <Label className="mb-1.5 block text-[13px] font-medium text-slate-700">Vehicle <span className="text-red-600">*</span></Label>
-                      <Select value={selectedVehicle} onValueChange={value => { setSelectedVehicle(value); setSelectedHelpers([]); }}>
+                      <Select value={selectedVehicle} onValueChange={value => { setSelectedVehicle(value); setSelectedHelpers([]); setHelperSlotCount(1); }}>
                         <SelectTrigger onBlur={() => touchAssignmentField('vehicle')} aria-required="true" aria-invalid={assignmentFieldError('vehicle', selectedVehicle)} className={`h-[42px] justify-start rounded-lg border border-slate-300 bg-white px-3 text-left text-sm text-slate-900 shadow-none focus:border-[#1a1f6e] focus:ring-2 focus:ring-[#1a1f6e]/20 [&>span]:flex-1 [&>span]:text-left [&>svg:last-child]:ml-auto ${assignmentFieldError('vehicle', selectedVehicle) ? 'border-red-500 focus:border-red-500 focus:ring-red-500/20' : ''}`}>
-                          <TruckIcon className="mr-2 h-[18px] w-[18px] shrink-0 text-slate-500" aria-hidden="true" /><SelectValue placeholder="Select vehicle" />
+                          <TruckIcon className="mr-2 h-[18px] w-[18px] shrink-0 text-slate-500" aria-hidden="true" /><SelectValue placeholder="Select or type a vehicle" />
                         </SelectTrigger>
                         <SelectContent>
                           {availableVehicles.length === 0 && <SelectItem value="none" disabled>No available vehicles</SelectItem>}
@@ -767,7 +782,7 @@ export default function Scheduling({ canAssign = true }: { canAssign?: boolean }
                       <Label className="mb-1.5 block text-[13px] font-medium text-slate-700">Driver <span className="text-red-600">*</span></Label>
                       <Select value={selectedDriver} onValueChange={setSelectedDriver}>
                         <SelectTrigger onBlur={() => touchAssignmentField('driver')} aria-required="true" aria-invalid={assignmentFieldError('driver', selectedDriver)} className={`h-[42px] justify-start rounded-lg border border-slate-300 bg-white px-3 text-left text-sm text-slate-900 shadow-none focus:border-[#1a1f6e] focus:ring-2 focus:ring-[#1a1f6e]/20 [&>span]:flex-1 [&>span]:text-left [&>svg:last-child]:ml-auto ${assignmentFieldError('driver', selectedDriver) ? 'border-red-500 focus:border-red-500 focus:ring-red-500/20' : ''}`}>
-                          <ContactRound className="mr-2 h-[18px] w-[18px] shrink-0 text-slate-500" aria-hidden="true" /><SelectValue placeholder="Select driver" />
+                          <ContactRound className="mr-2 h-[18px] w-[18px] shrink-0 text-slate-500" aria-hidden="true" /><SelectValue placeholder="Select or type a driver" />
                         </SelectTrigger>
                         <SelectContent>
                           {availableDrivers.length === 0 && <SelectItem value="none" disabled>No available drivers</SelectItem>}
@@ -782,22 +797,34 @@ export default function Scheduling({ canAssign = true }: { canAssign?: boolean }
                     </div>
 
                     <div>
-                      <Label className="mb-1.5 block text-[13px] font-medium text-slate-700">Helper <span className="text-red-600">*</span> <span className="font-normal text-slate-500">({helperSlots} required)</span></Label>
+                      <Label className="mb-1.5 block text-[13px] font-medium text-slate-700">Helper <span className="text-red-600">*</span></Label>
                       <div className="space-y-2">
                         {Array.from({ length: helperSlots }).map((_, index) => (
                           <div key={index}>
+                            <div className="flex items-center gap-2">
+                            <div className="min-w-0 flex-1">
                             <Select value={selectedHelpers[index] || ''} onValueChange={value => handleHelperChange(index, value)}>
-                              <SelectTrigger onBlur={() => touchAssignmentField(`helper-${index}`)} aria-required="true" aria-invalid={assignmentFieldError(`helper-${index}`, selectedHelpers[index])} className={`h-[42px] justify-start rounded-lg border border-slate-300 bg-white px-3 text-left text-sm text-slate-900 shadow-none focus:border-[#1a1f6e] focus:ring-2 focus:ring-[#1a1f6e]/20 [&>span]:flex-1 [&>span]:text-left [&>svg:last-child]:ml-auto ${assignmentFieldError(`helper-${index}`, selectedHelpers[index]) ? 'border-red-500 focus:border-red-500 focus:ring-red-500/20' : ''}`}>
-                                <UsersRound className="mr-2 h-[18px] w-[18px] shrink-0 text-slate-500" aria-hidden="true" /><SelectValue placeholder="Select helper" />
+                              <SelectTrigger onBlur={() => touchAssignmentField(`helper-${index}`)} aria-label={`Helper ${index + 1}`} aria-required={index < minHelperSlots} aria-invalid={assignmentFieldError(`helper-${index}`, selectedHelpers[index])} className={`h-[42px] justify-start rounded-lg border border-slate-300 bg-white px-3 text-left text-sm text-slate-900 shadow-none focus:border-[#1a1f6e] focus:ring-2 focus:ring-[#1a1f6e]/20 [&>span]:flex-1 [&>span]:text-left [&>svg:last-child]:ml-auto ${assignmentFieldError(`helper-${index}`, selectedHelpers[index]) ? 'border-red-500 focus:border-red-500 focus:ring-red-500/20' : ''}`}>
+                                <UsersRound className="mr-2 h-[18px] w-[18px] shrink-0 text-slate-500" aria-hidden="true" /><SelectValue placeholder="Select or type a helper" />
                               </SelectTrigger>
                               <SelectContent>
                                 {availableHelpers.filter(helper => !selectedHelpers.includes(helper.id) || selectedHelpers[index] === helper.id).map(helper => <SelectItem key={helper.id} value={helper.id} disabled={resourceTiming?.helpers[helper.id]?.status === 'blocked' && selectedHelpers[index] !== helper.id}>{helper.fullName} ({helper.empId}){timingNote(resourceTiming?.helpers[helper.id])}</SelectItem>)}
                               </SelectContent>
                             </Select>
-                            {assignmentFieldError(`helper-${index}`, selectedHelpers[index]) && <p className="mt-1 text-sm font-medium text-red-600">Helper {index + 1} is required.</p>}
+                            </div>
+                            {helperSlots > minHelperSlots && (
+                              <button type="button" onClick={() => handleRemoveHelperSlot(index)} aria-label={`Remove helper ${index + 1}`} title="Remove helper" className="flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-lg border border-slate-300 text-slate-500 hover:bg-red-50 hover:text-red-600">
+                                <X className="h-4 w-4" aria-hidden="true" />
+                              </button>
+                            )}
+                            </div>
+                            {index < minHelperSlots && assignmentFieldError(`helper-${index}`, selectedHelpers[index]) && <p className="mt-1 text-sm font-medium text-red-600">Helper {index + 1} is required.</p>}
                           </div>
                         ))}
                       </div>
+                      <button type="button" onClick={handleAddHelperSlot} disabled={helperSlots >= availableHelpers.length} className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-dashed border-[#1a1f6e]/40 px-3 py-2 text-sm font-medium text-[#1a1f6e] hover:bg-[#1a1f6e]/5 disabled:cursor-not-allowed disabled:opacity-50">
+                        <Plus className="h-4 w-4" aria-hidden="true" /> Add Another Helper
+                      </button>
                     </div>
                   </div>
 

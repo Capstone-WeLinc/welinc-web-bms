@@ -53,10 +53,36 @@ export function isPastScheduleDate(date: string | null | undefined) {
   return Boolean(key) && key < today;
 }
 
-/** An unassigned booking whose date has passed shows as "Needs reschedule", since it can't be assigned until CS moves it. */
-export function ScheduleStatusBadge({ status, date }: { status: ScheduleEntry['status']; date?: string }) {
+const MANILA_CLOCK = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Asia/Manila', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+});
+
+/** The current Manila date ("2026-11-07") and minutes since midnight. */
+export function manilaNow(date = new Date()) {
+  const parts = Object.fromEntries(MANILA_CLOCK.formatToParts(date).map(part => [part.type, part.value]));
+  return { dateKey: `${parts.year}-${parts.month}-${parts.day}`, minutes: Number(parts.hour) * 60 + Number(parts.minute) };
+}
+
+/**
+ * True when a booking's service date is behind us, or it is today and its pickup time has already passed (Manila).
+ * A booking with no readable time only counts as past once its date has gone by.
+ */
+export function isPastScheduleTime(date: string | null | undefined, time?: string | null) {
+  const key = toDateKey(date);
+  if (!key) return false;
+  const now = manilaNow();
+  if (key !== now.dateKey) return key < now.dateKey;
+  const pickup = parseScheduleTime(time ?? undefined);
+  return pickup !== null && pickup.minutes < now.minutes;
+}
+
+/**
+ * An unassigned booking whose date, or today's pickup time, has passed shows as "Needs reschedule",
+ * since it can't be assigned until CS moves it.
+ */
+export function ScheduleStatusBadge({ status, date, time }: { status: ScheduleEntry['status']; date?: string; time?: string }) {
   const isAssigned = status === 'Assigned';
-  const needsReschedule = status === 'Unassigned' && isPastScheduleDate(date);
+  const needsReschedule = status === 'Unassigned' && isPastScheduleTime(date, time);
   const tone = isAssigned ? 'border-emerald-400 bg-emerald-50 text-emerald-600'
     : needsReschedule ? 'border-red-300 bg-red-50 text-red-600'
       : 'border-amber-400 bg-amber-50 text-amber-600';
@@ -269,7 +295,7 @@ export default function ScheduleCalendar({ schedules, year, month, onMonthChange
                 <span className="w-[76px] shrink-0 text-[15px] font-semibold tabular-nums text-[#1a1f6e]">{pickupLabel(entry)}</span>
                 <span className="min-w-0 flex-1">
                   <span className="block break-words text-[15px] font-medium text-slate-900">{entry.client}</span>
-                  <span className="mt-1.5 block"><ScheduleStatusBadge status={entry.status} date={entry.date} /></span>
+                  <span className="mt-1.5 block"><ScheduleStatusBadge status={entry.status} date={entry.date} time={pickupValue(entry)} /></span>
                 </span>
                 <ChevronDown size={18} aria-hidden="true" className={`shrink-0 text-slate-500 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
               </button>

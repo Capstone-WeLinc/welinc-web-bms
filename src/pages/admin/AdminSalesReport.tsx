@@ -24,6 +24,7 @@ import {
   DialogContent,
 } from '../../components/ui/Dialog';
 import { DatePicker } from '../../components/ui/DatePicker';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/Select';
 type PeriodType = 'Daily' | 'Weekly' | 'Monthly' | 'Yearly';
 
 interface SalesSummaryStats {
@@ -144,10 +145,13 @@ export default function AdminSalesReport() {
   useEffect(() => {
     if (!monthPickerOpen) return;
     const closeOnOutsideClick = (event: MouseEvent) => {
+      // The year dropdown's option list is portaled to <body>; clicks inside it still belong to this picker.
+      if ((event.target as Element | null)?.closest?.('[data-select-content]')) return;
       if (!monthPickerRef.current?.contains(event.target as Node)) setMonthPickerOpen(false);
     };
     const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setMonthPickerOpen(false);
+      // Radix marks Escape as handled when it only closes the year dropdown.
+      if (event.key === 'Escape' && !event.defaultPrevented) setMonthPickerOpen(false);
     };
     document.addEventListener('mousedown', closeOnOutsideClick);
     document.addEventListener('keydown', closeOnEscape);
@@ -502,20 +506,25 @@ export default function AdminSalesReport() {
                   className="absolute left-0 top-full z-50 mt-2 w-[310px] rounded-2xl border border-slate-200 bg-white p-2.5 shadow-[0_16px_40px_rgba(15,23,42,0.16)] dark:border-slate-700 dark:bg-slate-800"
                 >
                   <div className="relative mb-2">
-                    <select
-                      aria-label="Select year"
+                    <Select
                       value={selectedDate.slice(0, 4)}
-                      onChange={(e) => {
+                      onValueChange={(year) => {
                         const month = selectedDate.slice(5, 7);
-                        handleDateChange(`${e.target.value}-${month}-01`);
+                        handleDateChange(`${year}-${month}-01`);
                       }}
-                      className="h-11 w-full appearance-none rounded-lg border-0 bg-slate-100 px-3 py-1.5 pr-9 text-base font-semibold text-[#0a0f2e] outline-none transition focus:ring-2 focus:ring-[#0a0f2e]/15 dark:bg-slate-700 dark:text-white"
                     >
-                      {Array.from({ length: 100 }, (_, index) => 2000 + index).map((year) => (
-                        <option key={year} value={year}>{year}</option>
-                      ))}
-                    </select>
-                    <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#0a0f2e] dark:text-white" />
+                      <SelectTrigger
+                        aria-label="Select year"
+                        className="h-11 rounded-lg border-0 bg-slate-100 px-3 py-1.5 text-base font-semibold text-[#0a0f2e] shadow-none transition focus:ring-2 focus:ring-[#0a0f2e]/15 dark:bg-slate-700 dark:text-white [&>svg]:text-[#0a0f2e] [&>svg]:opacity-100 dark:[&>svg]:text-white"
+                      >
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {Array.from({ length: 100 }, (_, index) => String(2000 + index)).map((year) => (
+                          <SelectItem key={year} value={year}>{year}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
 
                   <div className="grid grid-cols-4 gap-x-1 gap-y-0.5" role="grid">
@@ -872,7 +881,7 @@ export default function AdminSalesReport() {
 
       {/* View Month Details Modal Dialog */}
       <Dialog open={!!viewMonth} onOpenChange={() => setViewMonth(null)}>
-        <DialogContent hideCloseButton className="max-w-2xl overflow-hidden border-0 bg-transparent p-0 shadow-xl sm:rounded-2xl">
+        <DialogContent hideCloseButton className="gap-0 max-w-2xl overflow-hidden border-0 bg-transparent p-0 shadow-xl sm:rounded-2xl">
           {viewMonth && (
             <div className="overflow-hidden rounded-2xl bg-white">
               <ModalHeader

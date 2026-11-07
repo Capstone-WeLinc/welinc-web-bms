@@ -9,7 +9,7 @@ import KPICard from '../../components/shared/KpiCard';
 import StatusBadge from '../../components/shared/StatusBadge';
 import PageHeader from '../../components/pageheader/Pageheader';
 import { ActionRow, ScheduleJobRow, SectionCard } from '../../components/shared/DashboardSections';
-import { parseScheduleTime, ScheduleStatusBadge, toDateKey } from '../../components/scheduling/ScheduleCalendar';
+import { isPastScheduleTime, manilaNow, parseScheduleTime, ScheduleStatusBadge, toDateKey } from '../../components/scheduling/ScheduleCalendar';
 
 const SCHEDULING_PATH = '/operations/scheduling';
 const JOB_ORDER_PATH = '/operations/job-order';
@@ -77,19 +77,22 @@ export default function OperationsDashboard() {
     };
   }, [load]);
 
-  const today = localDateKey(new Date());
+  // Manila time, so "today" and "time has passed" match the Admin and CS dashboards.
+  const today = manilaNow().dateKey;
   const { schedules, vehicles, drivers, helpers, jobOrders } = data;
 
   const work = useMemo(() => {
-    const unassigned = schedules.filter(schedule => schedule.status === 'Unassigned').map(schedule => toDateKey(schedule.date));
+    // Unassigned and its date or today's pickup time has passed: CS has to reschedule it, so it leaves Today's Jobs.
+    const isPastUnassigned = (schedule: ScheduleEntry) => schedule.status === 'Unassigned' && isPastScheduleTime(schedule.date, pickupValue(schedule));
+    const unassigned = schedules.filter(schedule => schedule.status === 'Unassigned');
     const lastUpcoming = addDays(today, UPCOMING_DAYS);
     return {
       todaysJobs: schedules
-        .filter(schedule => toDateKey(schedule.date) === today)
+        .filter(schedule => toDateKey(schedule.date) === today && !isPastUnassigned(schedule))
         .sort((a, b) => (parseScheduleTime(pickupValue(a))?.minutes ?? Infinity) - (parseScheduleTime(pickupValue(b))?.minutes ?? Infinity)),
-      pastDue: unassigned.filter(date => date < today).length,
-      dueToday: unassigned.filter(date => date === today).length,
-      dueSoon: unassigned.filter(date => date > today && date <= lastUpcoming).length,
+      pastDue: unassigned.filter(isPastUnassigned).length,
+      dueToday: unassigned.filter(schedule => toDateKey(schedule.date) === today && !isPastUnassigned(schedule)).length,
+      dueSoon: unassigned.map(schedule => toDateKey(schedule.date)).filter(date => date > today && date <= lastUpcoming).length,
       toDistribute: jobOrders
         .filter(order => order.status === 'Pending')
         .sort((a, b) => toDateKey(a.serviceDate).localeCompare(toDateKey(b.serviceDate))),

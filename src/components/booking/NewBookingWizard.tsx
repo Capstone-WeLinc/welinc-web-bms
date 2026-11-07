@@ -679,7 +679,7 @@ function S2({ d, set, pArea, dArea, pBrgy, dBrgy, setCat, isU2U, touched, touch 
             {requiredInvalid('pickupAddress', !!d.pickupAddress && isValidAddress(d.pickupAddress)) && <p className="mt-1 text-sm text-red-600">{d.pickupAddress ? 'Please enter a valid pickup address.' : 'This field is required.'}</p>}
           </StepTwoField>
           <StepTwoField id="pickupZip" label="ZIP / postal code">
-            {pickupZipOptions.length > 1 ? <SI id="pickupZip" value={d.pickupZip} onChange={v => set('pickupZip', v)} options={pickupZipOptions} placeholder="Select ZIP code" className={`h-[42px] w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 focus:border-[#1a1f6e] focus:ring-2 focus:ring-[#1a1f6e]/20 ${d.pickupZip && !isValidZip(d.pickupZip) ? stepTwoInvalid : ''}`} invalid={!!d.pickupZip && !isValidZip(d.pickupZip)} /> : <input id="pickupZip" value={d.pickupZip} onChange={e => set('pickupZip', e.target.value)} maxLength={4} inputMode="numeric" placeholder="e.g. 1600" aria-invalid={!!d.pickupZip && !isValidZip(d.pickupZip)} className={`${stepTwoControl} ${d.pickupZip && !isValidZip(d.pickupZip) ? stepTwoInvalid : ''}`} />}
+            {pickupZipOptions.length > 1 ? <SI id="pickupZip" value={d.pickupZip} onChange={v => set('pickupZip', v)} options={pickupZipOptions} placeholder="Select or type a ZIP code" className={`h-[42px] w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 focus:border-[#1a1f6e] focus:ring-2 focus:ring-[#1a1f6e]/20 ${d.pickupZip && !isValidZip(d.pickupZip) ? stepTwoInvalid : ''}`} invalid={!!d.pickupZip && !isValidZip(d.pickupZip)} /> : <input id="pickupZip" value={d.pickupZip} onChange={e => set('pickupZip', e.target.value)} maxLength={4} inputMode="numeric" placeholder="e.g. 1600" aria-invalid={!!d.pickupZip && !isValidZip(d.pickupZip)} className={`${stepTwoControl} ${d.pickupZip && !isValidZip(d.pickupZip) ? stepTwoInvalid : ''}`} />}
             {d.pickupZip && !isValidZip(d.pickupZip) && <p className="mt-1 text-sm text-red-600">ZIP must be exactly 4 digits.</p>}
           </StepTwoField>
           {isU2U && <>
@@ -711,7 +711,7 @@ function S2({ d, set, pArea, dArea, pBrgy, dBrgy, setCat, isU2U, touched, touch 
             {requiredInvalid('deliveryAddress', !!d.deliveryAddress && isValidAddress(d.deliveryAddress)) && <p className="mt-1 text-sm text-red-600">{d.deliveryAddress ? 'Please enter a valid delivery address.' : 'This field is required.'}</p>}
           </StepTwoField>
           <StepTwoField id="deliveryZip" label="ZIP / postal code">
-            {deliveryZipOptions.length > 1 ? <SI id="deliveryZip" value={d.deliveryZip} onChange={v => set('deliveryZip', v)} options={deliveryZipOptions} placeholder="Select ZIP code" className={`h-[42px] w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 focus:border-[#1a1f6e] focus:ring-2 focus:ring-[#1a1f6e]/20 ${d.deliveryZip && !isValidZip(d.deliveryZip) ? stepTwoInvalid : ''}`} invalid={!!d.deliveryZip && !isValidZip(d.deliveryZip)} /> : <input id="deliveryZip" value={d.deliveryZip} onChange={e => set('deliveryZip', e.target.value)} maxLength={4} inputMode="numeric" placeholder="e.g. 4117" aria-invalid={!!d.deliveryZip && !isValidZip(d.deliveryZip)} className={`${stepTwoControl} ${d.deliveryZip && !isValidZip(d.deliveryZip) ? stepTwoInvalid : ''}`} />}
+            {deliveryZipOptions.length > 1 ? <SI id="deliveryZip" value={d.deliveryZip} onChange={v => set('deliveryZip', v)} options={deliveryZipOptions} placeholder="Select or type a ZIP code" className={`h-[42px] w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 focus:border-[#1a1f6e] focus:ring-2 focus:ring-[#1a1f6e]/20 ${d.deliveryZip && !isValidZip(d.deliveryZip) ? stepTwoInvalid : ''}`} invalid={!!d.deliveryZip && !isValidZip(d.deliveryZip)} /> : <input id="deliveryZip" value={d.deliveryZip} onChange={e => set('deliveryZip', e.target.value)} maxLength={4} inputMode="numeric" placeholder="e.g. 4117" aria-invalid={!!d.deliveryZip && !isValidZip(d.deliveryZip)} className={`${stepTwoControl} ${d.deliveryZip && !isValidZip(d.deliveryZip) ? stepTwoInvalid : ''}`} />}
             {d.deliveryZip && !isValidZip(d.deliveryZip) && <p className="mt-1 text-sm text-red-600">ZIP must be exactly 4 digits.</p>}
           </StepTwoField>
           {isU2U && <>
@@ -736,7 +736,7 @@ function S2({ d, set, pArea, dArea, pBrgy, dBrgy, setCat, isU2U, touched, touch 
           </StepTwoField>
           <StepTwoField id="pickupTime" label="Pickup time" required>
             <div className="relative"><Clock size={16} className="pointer-events-none absolute left-3 top-1/2 z-10 -translate-y-1/2 text-[#1a1f6e]" />
-              <SI id="pickupTime" value={d.pickupTime} onChange={v => set('pickupTime', v)} onBlur={() => touch('pickupTime')} options={availableTimes} placeholder="Select time" invalid={requiredInvalid('pickupTime', !!d.pickupTime)} className={`h-[42px] w-full rounded-lg border border-slate-300 bg-white pl-9 pr-9 text-sm text-slate-900 focus:border-[#1a1f6e] focus:ring-2 focus:ring-[#1a1f6e]/20 ${requiredInvalid('pickupTime', !!d.pickupTime) ? stepTwoInvalid : ''}`} />
+              <SI id="pickupTime" value={d.pickupTime} onChange={v => set('pickupTime', v)} onBlur={() => touch('pickupTime')} options={availableTimes} placeholder="Select or type a time" invalid={requiredInvalid('pickupTime', !!d.pickupTime)} className={`h-[42px] w-full rounded-lg border border-slate-300 bg-white pl-9 pr-9 text-sm text-slate-900 focus:border-[#1a1f6e] focus:ring-2 focus:ring-[#1a1f6e]/20 ${requiredInvalid('pickupTime', !!d.pickupTime) ? stepTwoInvalid : ''}`} />
             </div>
             {requiredInvalid('pickupTime', !!d.pickupTime) && <p className="mt-1 text-sm text-red-600">This field is required.</p>}
           </StepTwoField>
@@ -1083,7 +1083,7 @@ function SI({ value, onChange, options, placeholder, disabled, className, onBlur
 }) {
   return (
     <Select value={value} onValueChange={onChange} disabled={disabled}>
-      <SelectTrigger id={id} aria-invalid={invalid} onBlur={onBlur} className={`h-11 text-base ${className ?? ''}`}><SelectValue placeholder={placeholder ?? 'Select...'} /></SelectTrigger>
+      <SelectTrigger id={id} aria-invalid={invalid} onBlur={onBlur} className={`h-11 text-base ${className ?? ''}`}><SelectValue placeholder={placeholder ?? 'Select or type...'} /></SelectTrigger>
       <SelectContent>{options.map(o => <SelectItem key={o} value={o} className="text-base">{o}</SelectItem>)}</SelectContent>
     </Select>
   );

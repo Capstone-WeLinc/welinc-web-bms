@@ -12,6 +12,7 @@ import { tableCellClasses, tableClasses, tableHeadClasses, tableHeaderCellClasse
 import { Link } from 'react-router-dom';
 import DemandForecastDashboard from '../../components/reports/DemandForecastDashboard';
 import { toast } from 'sonner';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/Select';
 import { DayPicker, type DateRange } from 'react-day-picker';
 import {
   BarChart,
@@ -2067,93 +2068,20 @@ function ReportSelect({
   options: { value: string; label: string }[];
   onChange: (value: string) => void;
 }) {
-  const [open, setOpen] = useState(false);
-  const rootRef = useRef<HTMLDivElement>(null);
-  const triggerRef = useRef<HTMLButtonElement>(null);
-  const optionRefs = useRef<Array<HTMLButtonElement | null>>([]);
-  const selectedIndex = Math.max(0, options.findIndex((option) => option.value === value));
-  const selectedOption = options[selectedIndex];
-
-  useEffect(() => {
-    if (!open) return;
-    const closeOnOutsideClick = (event: PointerEvent) => {
-      if (event.target instanceof Node && !rootRef.current?.contains(event.target)) setOpen(false);
-    };
-    document.addEventListener('pointerdown', closeOnOutsideClick);
-    return () => document.removeEventListener('pointerdown', closeOnOutsideClick);
-  }, [open]);
-
-  const focusOption = (index: number) => {
-    const nextIndex = (index + options.length) % options.length;
-    optionRefs.current[nextIndex]?.focus();
-  };
-
-  const openAt = (index: number) => {
-    setOpen(true);
-    window.requestAnimationFrame(() => focusOption(index));
-  };
-
   return (
-    <div ref={rootRef} className="relative">
-      <button
-        ref={triggerRef}
+    <Select value={value} onValueChange={onChange}>
+      <SelectTrigger
         id={id}
-        type="button"
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        aria-controls={`${id}-options`}
-        onClick={() => setOpen((wasOpen) => !wasOpen)}
-        onKeyDown={(event) => {
-          if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-            event.preventDefault();
-            openAt(selectedIndex);
-          } else if (event.key === 'Escape') {
-            setOpen(false);
-          }
-        }}
-        className={`flex h-10 w-full items-center justify-between gap-3 rounded-xl border border-slate-300 bg-white px-3 text-left text-sm text-slate-700 shadow-sm outline-none transition hover:border-slate-400 focus-visible:ring-2 focus-visible:ring-slate-300 focus-visible:ring-offset-1 ${open ? 'ring-1 ring-slate-200' : ''}`}
+        className="h-10 gap-3 rounded-xl border-slate-300 px-3 text-left text-slate-700 shadow-sm transition hover:border-slate-400 focus:border-slate-300 focus:ring-2 focus:ring-slate-300 focus:ring-offset-1 data-[state=open]:ring-1 data-[state=open]:ring-slate-200 [&>svg]:shrink-0 [&>svg]:text-slate-500 [&>svg]:opacity-100 [&>svg]:transition-transform data-[state=open]:[&>svg]:rotate-180 data-[state=open]:[&>svg]:text-[#a16207]"
       >
-        <span className="truncate">{selectedOption?.label ?? value}</span>
-        <ChevronDown size={16} className={`shrink-0 text-slate-500 transition-transform ${open ? 'rotate-180 text-[#a16207]' : ''}`} aria-hidden="true" />
-      </button>
-      {open && (
-        <div
-          id={`${id}-options`}
-          role="listbox"
-          aria-labelledby={id}
-          className="absolute left-0 top-full z-40 mt-2 max-h-60 w-full min-w-full max-w-[calc(100vw-2rem)] overflow-hidden overflow-y-auto rounded-xl border border-slate-200 bg-white p-1 shadow-xl shadow-slate-900/10"
-        >
-          {options.map((option, index) => {
-            const selected = option.value === value;
-            return (
-              <button
-                key={option.value}
-                ref={(element) => { optionRefs.current[index] = element; }}
-                type="button"
-                role="option"
-                aria-selected={selected}
-                tabIndex={-1}
-                onClick={() => {
-                  onChange(option.value);
-                  setOpen(false);
-                  triggerRef.current?.focus();
-                }}
-                onKeyDown={(event) => {
-                  if (event.key === 'ArrowDown') { event.preventDefault(); focusOption(index + 1); }
-                  else if (event.key === 'ArrowUp') { event.preventDefault(); focusOption(index - 1); }
-                  else if (event.key === 'Home') { event.preventDefault(); focusOption(0); }
-                  else if (event.key === 'End') { event.preventDefault(); focusOption(options.length - 1); }
-                  else if (event.key === 'Escape') { event.preventDefault(); setOpen(false); triggerRef.current?.focus(); }
-                }}
-                className={`block w-full rounded-lg px-3 py-2 text-left text-sm outline-none transition-colors focus-visible:bg-[#e8b800] focus-visible:text-slate-900 active:bg-[#e8b800] active:text-slate-900 ${selected ? 'font-semibold text-slate-800' : 'text-slate-700'} hover:bg-[#e8b800] hover:text-slate-900`}
-              >
-                {option.label}
-              </button>
-            );
-          })}
-        </div>
-      )}
-    </div>
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent className="max-h-72">
+        {options.map((option) => (
+          <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
   );
 }
 

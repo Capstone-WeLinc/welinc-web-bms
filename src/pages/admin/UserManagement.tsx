@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import { Edit2, KeyRound, Plus, Trash2, Unlock, UserRoundCheck, Users } from "lucide-react";
 import PageHeader from "../../components/pageheader/Pageheader";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/Select";
 import {
   ActionButton,
   ActionMenu,
@@ -129,6 +130,34 @@ function Field({ label, children, error = "", required = true, errorId }: { labe
       {children}
       {error ? <span id={errorId} className="text-sm font-normal text-red-600">{error}</span> : null}
     </label>
+  );
+}
+
+/** Searchable dropdown styled like the form's text inputs. */
+function FormSelect({ value, onChange, options, placeholder, disabled, onBlur, error = "", describedBy }: {
+  value: string;
+  onChange: (value: string) => void;
+  options: Array<{ value: string; label: string }>;
+  placeholder?: string;
+  disabled?: boolean;
+  onBlur?: () => void;
+  error?: string;
+  describedBy?: string;
+}) {
+  return (
+    <Select value={value} onValueChange={onChange} disabled={disabled}>
+      <SelectTrigger
+        onBlur={onBlur}
+        aria-invalid={Boolean(error)}
+        aria-describedby={describedBy}
+        className={`${inputClass(error)} h-auto text-sm font-normal shadow-none focus:ring-0 data-[placeholder]:text-[var(--color-text-secondary)] dark:border-[var(--color-border)] dark:bg-[var(--color-input-bg)] dark:text-[var(--color-text-primary)]`}
+      >
+        <SelectValue placeholder={placeholder} />
+      </SelectTrigger>
+      <SelectContent>
+        {options.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}
+      </SelectContent>
+    </Select>
   );
 }
 
@@ -686,15 +715,16 @@ export default function UserManagement() {
               <div className="grid min-h-0 flex-1 gap-4 overflow-y-auto px-6 py-4">
                 <div className={`grid gap-4 ${crewForm ? "sm:grid-cols-2" : ""}`}>
                   <Field label="Role" {...fieldProps("role")}>
-                    <select
+                    <FormSelect
                       value={form.role}
                       disabled={Boolean(editingCrew)}
-                      onChange={(event) => { setField("role", event.target.value as ManagedRole); touch("role"); }}
-                      {...inputProps("role")}
-                    >
-                      <option value="" disabled>Select role</option>
-                      {roleOptions.map((role) => <option key={role} value={role}>{ROLE_LABELS[role]}</option>)}
-                    </select>
+                      placeholder="Select or type a role"
+                      onChange={(value) => { setField("role", value as ManagedRole); touch("role"); }}
+                      onBlur={() => touch("role")}
+                      error={errorFor("role")}
+                      describedBy={errorFor("role") ? errorId("role") : undefined}
+                      options={roleOptions.map((role) => ({ value: role, label: ROLE_LABELS[role] }))}
+                    />
                   </Field>
                   <Field label={crewForm ? "Full name" : "Name"} {...fieldProps("name")}>
                     <input value={form.name} onChange={(event) => setField("name", event.target.value)} {...inputProps("name")} />
@@ -713,9 +743,7 @@ export default function UserManagement() {
                   <>
                     <CrewSection title="Work details">
                       <Field label="Status">
-                        <select value={form.status} onChange={(event) => setField("status", event.target.value as CrewStatus)} className={inputClass()}>
-                          {CREW_STATUS_OPTIONS.map((status) => <option key={status} value={status}>{status}</option>)}
-                        </select>
+                        <FormSelect value={form.status} onChange={(value) => setField("status", value as CrewStatus)} options={CREW_STATUS_OPTIONS.map((status) => ({ value: status, label: status }))} />
                       </Field>
                       <Field label="Join date" {...fieldProps("joinDate")}>
                         <input type="date" value={form.joinDate} onChange={(event) => setField("joinDate", event.target.value)} {...inputProps("joinDate")} />
@@ -728,9 +756,7 @@ export default function UserManagement() {
                           <input value={form.licenseNo} onChange={(event) => setField("licenseNo", event.target.value)} {...inputProps("licenseNo")} />
                         </Field>
                         <Field label="License type">
-                          <select value={form.licenseType} onChange={(event) => setField("licenseType", event.target.value)} className={inputClass()}>
-                            {LICENSE_TYPES.map((type) => <option key={type} value={type}>{type}</option>)}
-                          </select>
+                          <FormSelect value={form.licenseType} onChange={(value) => setField("licenseType", value)} options={LICENSE_TYPES.map((type) => ({ value: type, label: type }))} />
                         </Field>
                         <Field label="License expiry" {...fieldProps("licenseExpiry")}>
                           <input type="date" value={form.licenseExpiry} onChange={(event) => setField("licenseExpiry", event.target.value)} {...inputProps("licenseExpiry")} />

@@ -425,7 +425,7 @@ export default function Bookings() {
 
       {/* ─── Reschedule Modal ─── */}
       <Dialog open={!!rescheduleBooking} onOpenChange={open => { if (!open) { setRescheduleBooking(null); setRescheduleDate(''); } }}>
-        <DialogContent hideCloseButton className="w-[calc(100%-2rem)] max-w-xl overflow-hidden rounded-2xl border-0 bg-transparent p-0 shadow-xl">
+        <DialogContent hideCloseButton className="gap-0 w-[calc(100%-2rem)] max-w-xl overflow-hidden rounded-2xl border-0 bg-transparent p-0 shadow-xl">
           <div className="flex max-h-[90vh] flex-col overflow-hidden rounded-2xl bg-white">
             <ModalHeader icon={CalendarDays} title="Reschedule booking" subtitle={rescheduleBooking?.bookingNo ?? '—'} closeLabel="Close reschedule booking" />
 

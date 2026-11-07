@@ -94,7 +94,7 @@ test('Booking regression: create, verify saved details, edit, and reschedule', a
     await wizard.getByPlaceholder('Street / building', { exact: true }).nth(1).fill('San Pedro');
     await wizard.getByPlaceholder('e.g. 4117', { exact: true }).fill('1121');
     await selectDate(page, wizard.getByRole('button', { name: 'Select pickup date' }), pickupDate);
-    await selectOption(page, selects.filter({ hasText: 'Select time' }), '4:00 AM');
+    await selectOption(page, wizard.getByPlaceholder('Select or type a time', { exact: true }), '4:00 AM');
     await nextStep(wizard, 3);
   });
 

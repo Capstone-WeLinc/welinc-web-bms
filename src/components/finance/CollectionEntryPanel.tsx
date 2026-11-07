@@ -46,7 +46,7 @@ export default function CollectionEntryPanel({ onCreated }: { onCreated: () => v
           <div>
             <Select required value={bookingId} onValueChange={(value) => { setBookingId(value); setKey(crypto.randomUUID()); }}>
               <SelectTrigger id="collection-booking" className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 py-0 text-sm text-slate-900 focus:border-[#1a1f6e] focus:ring-2 focus:ring-[#1a1f6e]/20">
-                <SelectValue placeholder="Choose a booking" />
+                <SelectValue placeholder="Select or type a booking" />
               </SelectTrigger>
               <SelectContent className="rounded-xl border-slate-200 p-1 shadow-[0_14px_36px_rgba(15,23,42,0.16)]">
                 {bookings.map((item) => (

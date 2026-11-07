@@ -9,7 +9,7 @@ import KPICard from '../../components/shared/KpiCard';
 import StatusBadge from '../../components/shared/StatusBadge';
 import PageHeader from '../../components/pageheader/Pageheader';
 import { ActionRow, SectionCard } from '../../components/shared/DashboardSections';
-import { parseScheduleTime } from '../../components/scheduling/ScheduleCalendar';
+import { isPastScheduleTime, parseScheduleTime } from '../../components/scheduling/ScheduleCalendar';
 import { getCustomerServiceStatus, uniqueBookings, type CustomerServiceBooking } from './CsPostService';
 
 const BOOKINGS_PATH = '/cs/bookings';
@@ -94,14 +94,17 @@ export default function CsDashboard() {
   const view = useMemo(() => {
     const active = bookings.filter(booking => !isCancelled(booking));
     const lastUpcoming = addDays(today, UPCOMING_DAYS);
+    // Not yet assigned a truck and team ("For Plotting") and its date or today's pickup time has passed:
+    // it leaves Today's bookings and counts as "Past Date, Not Assigned" so CS can reschedule or cancel it.
+    const isPastUnassigned = (booking: Booking) => normalizeBookingStatus(booking.status) === 'For Plotting' && isPastScheduleTime(serviceDate(booking), pickupValue(booking));
     return {
       todaysBookings: active
-        .filter(booking => serviceDate(booking) === today)
+        .filter(booking => serviceDate(booking) === today && !isPastUnassigned(booking))
         .sort((a, b) => (parseScheduleTime(pickupValue(a))?.minutes ?? Infinity) - (parseScheduleTime(pickupValue(b))?.minutes ?? Infinity)),
       receivedToday: bookings.filter(booking => createdTime(booking) && manilaDateKey(new Date(createdTime(booking))) === today).length,
       nextDays: active.filter(booking => serviceDate(booking) > today && serviceDate(booking) <= lastUpcoming).length,
       latest: [...active].sort((a, b) => createdTime(b) - createdTime(a)).slice(0, VISIBLE_LATEST),
-      pastDue: active.filter(booking => normalizeBookingStatus(booking.status) === 'For Plotting' && serviceDate(booking) && serviceDate(booking) < today).length,
+      pastDue: active.filter(isPastUnassigned).length,
     };
   }, [bookings, today]);
 
