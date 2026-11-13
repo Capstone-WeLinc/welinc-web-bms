@@ -1,11 +1,11 @@
 import TablePagination from '../../components/ui/TablePagination';
 import PageHeader from '../../components/pageheader/Pageheader';
 import { useEffect, useState } from 'react';
-import { Activity, CalendarClock, Filter, Search, ShieldCheck } from 'lucide-react';
+import { Activity, CalendarClock, Search } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '../../lib/api';
 import { DatePicker } from '../../components/ui/DatePicker';
-import { Select, SelectContent, SelectItem, SelectTrigger } from '../../components/ui/Select';
+import { StatusFilter } from '../../components/ui/ListSearchFilters';
 import { tableCellClasses, tableClasses, tableHeadClasses, tableHeaderCellClasses, tableRowClasses } from '../../components/ui/StandardTable';
 
 interface ActivityLogRow {
@@ -40,6 +40,9 @@ const ACTION_FILTERS: { label: string; verbs: string[] }[] = [
   { label: 'Submitted', verbs: ['Submitted'] },
 ];
 
+/** Roles the activity log records for signed-in users. */
+const ROLE_FILTERS = ['ADMIN', 'CUSTOMER_SUPPORT', 'OPERATIONS'];
+
 function roleLabel(role: string | null) {
   if (role === 'ADMIN') return 'Administrator';
   if (role === 'OPERATIONS') return 'Operations';
@@ -54,6 +57,7 @@ export default function ActivityLogs() {
   const [search, setSearch] = useState('');
   const [searchInput, setSearchInput] = useState('');
   const [action, setAction] = useState('All');
+  const [role, setRole] = useState('All');
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
   const [page, setPage] = useState(1);
@@ -67,7 +71,7 @@ export default function ActivityLogs() {
   useEffect(() => {
     let mounted = true;
     setLoading(true);
-    api.get<ActivityLogResponse>('/activity-logs', { params: { search: search || undefined, action: ACTION_FILTERS.find((item) => item.label === action)?.verbs.join('|') || undefined, from: from || undefined, to: to || undefined, page, pageSize: pageSize === Number.MAX_SAFE_INTEGER ? 'all' : pageSize } })
+    api.get<ActivityLogResponse>('/activity-logs', { params: { search: search || undefined, action: ACTION_FILTERS.find((item) => item.label === action)?.verbs.join('|') || undefined, role: role === 'All' ? undefined : role, from: from || undefined, to: to || undefined, page, pageSize: pageSize === Number.MAX_SAFE_INTEGER ? 'all' : pageSize } })
       .then(({ data }) => {
         if (!mounted) return;
         setRows(data.items ?? []);
@@ -76,7 +80,7 @@ export default function ActivityLogs() {
       .catch(() => { if (mounted) toast.error('Unable to load activity logs.'); })
       .finally(() => { if (mounted) setLoading(false); });
     return () => { mounted = false; };
-  }, [search, action, from, to, page, pageSize]);
+  }, [search, action, role, from, to, page, pageSize]);
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
@@ -101,28 +105,27 @@ export default function ActivityLogs() {
         </div>}
       />
 
-      <div className="relative max-w-[535px]">
-        <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-        <input value={searchInput} onChange={(event) => setSearchInput(event.target.value)} placeholder="Search users..." className="h-[52px] w-full rounded-xl border border-slate-300 bg-white pl-12 pr-4 text-sm text-slate-700 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-[#1a1f6e] focus:ring-2 focus:ring-[#1a1f6e]/10 dark:border-slate-600 dark:bg-slate-800 dark:text-white" />
-      </div>
-
       <div className="overflow-hidden rounded-none border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-800">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-5 py-4 dark:border-slate-700">
-          <div className="flex items-center gap-2"><ShieldCheck className="h-5 w-5 text-[#1a1f6e] dark:text-indigo-300" /><h2 className="font-bold text-[#0a0f2e] dark:text-white">System audit trail</h2></div>
-          <div className="flex flex-wrap items-center gap-3">
-            <Select value={action} onValueChange={(value) => { setAction(value); setPage(1); }}>
-              <SelectTrigger aria-label="Filter activity action" className="h-9 w-[72px] justify-start gap-2 rounded-lg border-slate-200 bg-slate-50 px-3 text-xs font-medium text-slate-700 shadow-none transition hover:border-slate-300 focus:border-[#1a1f6e] focus:ring-[#1a1f6e]/15 dark:border-slate-700 dark:bg-slate-900 dark:text-white [&>svg:last-child]:ml-auto">
-                <Filter className="h-3.5 w-3.5 shrink-0 text-[#7385aa]" aria-hidden="true" />
-              </SelectTrigger>
-              <SelectContent className="w-max min-w-0 rounded-xl border-slate-200 p-1 shadow-[0_14px_36px_rgba(15,23,42,0.16)] dark:border-slate-700 [&_[data-radix-select-viewport]]:!w-max [&_[data-radix-select-viewport]]:!min-w-0">
-                {ACTION_FILTERS.map(({ label: item }) => (
-                  <SelectItem key={item} value={item} className="my-0.5 cursor-pointer rounded-lg py-2.5 pl-9 pr-3 text-sm font-medium hover:bg-[#d4a72c] hover:text-black focus:bg-[#d4a72c] focus:text-black data-[highlighted]:bg-[#d4a72c] data-[highlighted]:text-black dark:hover:bg-[#d4a72c] dark:hover:text-black dark:focus:bg-[#d4a72c] dark:focus:text-black">
-                    {item}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <span className="whitespace-nowrap text-xs font-semibold text-slate-600 dark:text-slate-300">{total} activities</span>
+        <div className="flex flex-col items-start justify-between gap-4 border-b border-slate-200 p-4 lg:flex-row lg:items-center dark:border-slate-700">
+          <div className="relative w-full lg:max-w-md">
+            <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" aria-hidden="true" />
+            <input value={searchInput} onChange={(event) => setSearchInput(event.target.value)} placeholder="Search users..." aria-label="Search users" className="w-full rounded-lg border border-slate-200 bg-white py-2.5 pl-10 pr-4 text-sm text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#0a0f2e]/20" />
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <StatusFilter
+              options={[{ value: 'All', label: 'All' }, ...ROLE_FILTERS.map((role) => ({ value: role, label: roleLabel(role) }))]}
+              value={role}
+              onChange={(value) => { setRole(value); setPage(1); }}
+              allLabel="All Roles"
+              ariaLabel="Filter by role"
+            />
+            <StatusFilter
+              options={ACTION_FILTERS.map(({ label }) => label)}
+              value={action}
+              onChange={(value) => { setAction(value); setPage(1); }}
+              allLabel="All Actions"
+              ariaLabel="Filter activity action"
+            />
           </div>
         </div>
         <div className="overflow-x-auto">

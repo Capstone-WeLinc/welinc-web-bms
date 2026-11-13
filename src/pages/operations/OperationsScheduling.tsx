@@ -1,3 +1,4 @@
+import { StatusFilter } from '../../components/ui/ListSearchFilters';
 import ModalHeader from '../../components/ui/ModalHeader';
 import ScheduleDetailsDialog from '../../components/shared/ScheduleDetailsDialog';
 import TablePagination from '../../components/ui/TablePagination';
@@ -200,24 +201,11 @@ export default function OperationsScheduling() {
               placeholder="Search booking no. or client..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#d4a72c]"
+              className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#0a0f2e]/20"
             />
           </div>
           <div className="flex items-center gap-2">
-            {(['All', 'Assigned', 'Unassigned'] as const).map((tab) => (
-              <button
-                key={tab}
-                type="button"
-                onClick={() => setStatusFilter(tab)}
-                className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${
-                  statusFilter === tab
-                    ? 'bg-[#1a1f6e] text-white'
-                    : 'bg-slate-100 dark:bg-slate-900 text-slate-600 dark:text-slate-400'
-                }`}
-              >
-                {tab.toUpperCase()}
-              </button>
-            ))}
+            <StatusFilter options={['All', 'Assigned', 'Unassigned'] as const} value={statusFilter} onChange={setStatusFilter} />
             <button
               type="button"
               onClick={() => setViewMode('list')}

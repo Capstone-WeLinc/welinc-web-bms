@@ -449,8 +449,7 @@ export default function NotificationBell() {
           </div>
           <div className="flex shrink-0 items-center gap-2">
             {unreadCount > 0 && <button type="button" onClick={markAllRead} className="whitespace-nowrap rounded-md px-1.5 py-1 text-xs font-semibold text-[#1a1f6e] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1a1f6e]/30">Mark all read</button>}
-            <span className="sr-only" aria-live="polite">Updated {formatTime(new Date(updatedAt).toISOString())}</span>
-          </div>
+            <span className="sr-only" aria-live="polite">Updated {formatTime(new Date(updatedAt).toISOString())}</span>          </div>
         </header>
         <div className="min-h-0 flex-1 overflow-y-auto bg-[#f8fafc]">
           {roleNotifications.length === 0 ? (

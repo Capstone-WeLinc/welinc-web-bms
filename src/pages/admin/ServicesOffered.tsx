@@ -278,7 +278,7 @@ export default function ServicesOffered() {
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                         <h3 className="text-base font-medium text-slate-900">{item.name}</h3>
-                        {active !== undefined && <span className={`rounded-full border px-2.5 py-0.5 text-xs font-medium uppercase tracking-wide ${active ? "border-emerald-300 bg-emerald-50 text-emerald-700" : "border-slate-300 bg-slate-100 text-slate-600"}`}>{active ? "Active" : "Inactive"}</span>}
+                        {active === false && <span className="rounded-full border border-slate-300 bg-slate-100 px-2.5 py-0.5 text-xs font-medium uppercase tracking-wide text-slate-600">Inactive</span>}
                       </div>
                       {tab !== "material" && <p className="mt-0.5 text-sm text-slate-600">{item.description || "No description provided."}</p>}
                       {tab === "additional" && <div className="mt-2 flex flex-wrap items-center gap-2"><span className="rounded-full border border-slate-300 bg-slate-100 px-2.5 py-1 text-xs text-slate-600">{item.duration || "Duration not set"}</span><span className="text-sm font-medium text-[#1a1f6e]">{peso(item.price ?? 0)}</span></div>}

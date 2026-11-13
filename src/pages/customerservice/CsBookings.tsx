@@ -1,3 +1,4 @@
+import { StatusFilter } from '../../components/ui/ListSearchFilters';
 import ModalHeader from '../../components/ui/ModalHeader';
 import { useState, useEffect, type FormEvent } from 'react';
 import { useSearchParams } from 'react-router-dom';
@@ -367,7 +368,7 @@ export default function Bookings() {
       </div>
 
       {/* Search + Filters */}
-      <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between">
+      <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between border border-b-0 border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-800">
         <div className="relative w-full lg:max-w-md">
           <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
           <input
@@ -377,21 +378,11 @@ export default function Bookings() {
             className="w-full pl-10 pr-4 py-2.5 text-sm border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-[#0a0f2e]/20 placeholder:text-slate-400"
           />
         </div>
-        <div className="flex gap-2 flex-wrap items-center">
-          {STATUS_FILTERS.map(s => (
-            <button
-              key={s}
-              onClick={() => handleStatusFilterClick(s)}
-              className={`px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide rounded-lg whitespace-nowrap cursor-pointer transition-colors border ${statusFilter === s ? 'bg-[#1a1f6e] text-white border-[#1a1f6e]' : 'bg-white text-slate-600 border-slate-200'}`}
-            >
-              {s}
-            </button>
-          ))}
-        </div>
+        <StatusFilter options={STATUS_FILTERS} value={statusFilter} onChange={handleStatusFilterClick} />
       </div>
 
       {/* Table Card */}
-      <div className="rounded-none border border-slate-200 bg-white overflow-hidden">
+      <div className="!mt-0 rounded-none border border-slate-200 bg-white overflow-hidden">
         <div className="w-full overflow-x-auto">
           <table className="min-w-[900px] w-full table-auto font-sans text-sm">
             <thead>

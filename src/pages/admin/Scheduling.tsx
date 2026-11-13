@@ -1,3 +1,4 @@
+import { StatusFilter } from '../../components/ui/ListSearchFilters';
 import ModalHeader from '../../components/ui/ModalHeader';
 import ScheduleDetailsDialog from '../../components/shared/ScheduleDetailsDialog';
 import TablePagination from '../../components/ui/TablePagination';
@@ -5,7 +6,7 @@ import PageHeader from '../../components/pageheader/Pageheader';
 import { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { UserCheck, Truck, CalendarCheck, Search, ClipboardList, Eye, Pencil, Clock3, Warehouse, PackageCheck, TruckIcon, ContactRound, UsersRound, TriangleAlert, MoreVertical, Check, Plus, X } from 'lucide-react';
+import { UserCheck, Truck, CalendarCheck, CalendarDays, Search, ClipboardList, Eye, Pencil, Clock3, Warehouse, PackageCheck, TruckIcon, ContactRound, UsersRound, TriangleAlert, MoreVertical, Check, Plus, X, Info } from 'lucide-react';
 import { api } from '../../lib/api';
 import { normalizeBookingStatus } from '../../lib/booking';
 import type { Booking, ScheduleEntry, Vehicle, Driver, Helper } from '../../lib/types';
@@ -361,6 +362,8 @@ export default function Scheduling({ canAssign = true }: { canAssign?: boolean }
   // Minimum number of helper fields that must be filled; users may add more via "Add Another Helper".
   const minHelperSlots = Math.max(1, requiredHelpers);
   const helperSlots = Math.max(minHelperSlots, helperSlotCount);
+  // A permit booking is filed under its truck and crew, so once assigned only time, garage and delivery type can change.
+  const crewLocked = Boolean(assignTarget?.permitRequired && assignTarget.status === 'Assigned');
 
 
   function getAvailableVehicles() {
@@ -500,8 +503,9 @@ export default function Scheduling({ canAssign = true }: { canAssign?: boolean }
         <KPICard label="Unassigned Bookings" value={unassigned} icon={ClipboardList} iconColor="#94a3b8" variant="dashboard-compact" />
       </div>
 
-      {/* Search + Filters */}
-      <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between">
+      {/* Search + Filters sit on top of the table as one connected card. */}
+      <div>
+      <div className={`flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-800 ${viewMode === 'calendar' ? 'mb-4' : 'border-b-0'}`}>
         {viewMode === 'list' ? (
           <div className="relative w-full lg:max-w-md">
             <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -516,24 +520,24 @@ export default function Scheduling({ canAssign = true }: { canAssign?: boolean }
           <div />
         )}
         <div className="flex gap-2 flex-wrap items-center">
-          {(['All', 'Assigned', 'Unassigned', 'Calendar'] as const).map(f => (
-            <button
-              key={f}
-              onClick={() => handleStatusFilter(f)}
-              className={`px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide rounded-lg whitespace-nowrap cursor-pointer transition-colors border ${
-                (f === 'Calendar' && viewMode === 'calendar') || (f !== 'Calendar' && viewMode === 'list' && statusFilter === f)
-                  ? 'bg-[#1a1f6e] text-white border-[#1a1f6e]'
-                  : 'bg-white text-slate-600 border-slate-200'
-              }`}
-            >
-              {f}
-            </button>
-          ))}
+          <StatusFilter options={['All', 'Assigned', 'Unassigned'] as const} value={statusFilter} onChange={handleStatusFilter} />
+          <button
+            type="button"
+            aria-pressed={viewMode === 'calendar'}
+            onClick={() => viewMode === 'calendar' ? setViewMode('list') : handleStatusFilter('Calendar')}
+            className={`inline-flex h-11 items-center gap-2 whitespace-nowrap rounded-lg border px-4 text-sm font-medium shadow-sm transition-colors ${
+              viewMode === 'calendar' ? 'border-[#1a1f6e] bg-[#1a1f6e] text-white' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+            }`}
+          >
+            <CalendarDays className="h-4 w-4" aria-hidden="true" />
+            Calendar
+          </button>
         </div>
       </div>
 
       {/* Main Card */}
-      <div className="rounded-none border border-slate-200 bg-white overflow-hidden">
+      {/* The calendar view shows the calendar and the day details as two separate cards. */}
+      <div className={viewMode === 'calendar' ? '' : 'rounded-none border border-slate-200 bg-white overflow-hidden'}>
         {/* ── List View ── */}
         {viewMode === 'list' && (
           <div className="overflow-x-auto">
@@ -601,11 +605,16 @@ export default function Scheduling({ canAssign = true }: { canAssign?: boolean }
                               {!canAssign ? (
                                 <DropdownMenuItem onSelect={() => openView(s)} className="w-fit gap-2 whitespace-nowrap rounded-lg px-3 py-2 text-sm text-slate-700"><Eye className="h-4 w-4" /> View</DropdownMenuItem>
                               ) : isPastDate(s) ? (
-                                <>
-                                  <DropdownMenuItem onSelect={() => openView(s)} className="w-fit gap-2 whitespace-nowrap rounded-lg px-3 py-2 text-sm text-slate-700"><Eye className="h-4 w-4" /> View</DropdownMenuItem>
-                                  <DropdownMenuItem disabled className="w-fit gap-2 whitespace-nowrap rounded-lg px-3 py-2 text-sm text-slate-700">{s.status === 'Unassigned' ? <><ClipboardList className="h-4 w-4" /> Assign</> : <><Pencil className="h-4 w-4" /> Edit</>}</DropdownMenuItem>
-                                  <p className="max-w-[220px] px-3 pb-2 pt-0.5 text-xs leading-snug text-slate-500">Service date or pickup time has passed. CS needs to reschedule this booking first.</p>
-                                </>
+                                // "Needs reschedule": Assign/Edit stays visible but disabled, with the reason in a note below.
+                                <div className="w-64">
+                                  <DropdownMenuItem onSelect={() => openView(s)} className="gap-2 whitespace-nowrap rounded-lg px-3 py-2 text-sm text-slate-700"><Eye className="h-4 w-4" /> View</DropdownMenuItem>
+                                  <DropdownMenuItem disabled className="gap-2 whitespace-nowrap rounded-lg px-3 py-2 text-sm text-slate-700">{s.status === 'Unassigned' ? <><ClipboardList className="h-4 w-4" /> Assign</> : <><Pencil className="h-4 w-4" /> Edit</>}</DropdownMenuItem>
+                                  <div className="mx-1 my-1 h-px bg-slate-100" aria-hidden="true" />
+                                  <p role="note" className="m-1 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2 text-xs leading-snug text-amber-800">
+                                    <Info className="mt-px h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                                    <span>Service date or pickup time has passed. CS needs to reschedule this booking first.</span>
+                                  </p>
+                                </div>
                               ) : s.status === 'Unassigned' ? (
                                 <DropdownMenuItem onSelect={() => openAssign(s)} className="w-fit gap-2 whitespace-nowrap rounded-lg px-3 py-2 text-sm text-slate-700"><ClipboardList className="h-4 w-4" /> Assign</DropdownMenuItem>
                               ) : (
@@ -645,8 +654,10 @@ export default function Scheduling({ canAssign = true }: { canAssign?: boolean }
             getCrew={getScheduleCrew}
             onView={openView}
             onAssign={openAssign}
+            layout="split"
           />
         )}
+      </div>
       </div>
 
 
@@ -672,6 +683,7 @@ export default function Scheduling({ canAssign = true }: { canAssign?: boolean }
                     <div>
                       <p className="text-sm font-medium text-red-800">Barangay pass / permit required</p>
                       <p className="mt-0.5 text-sm text-red-700">This booking requires a barangay pass or permit. Please verify it before dispatching the assigned resources.</p>
+                      {crewLocked && <p className="mt-1.5 text-sm font-medium text-red-800">The truck, driver and helpers are locked because the permit is filed under them. You can still change the dispatch time, garage and delivery type.</p>}
                     </div>
                   </div>
                 )}
@@ -757,7 +769,7 @@ export default function Scheduling({ canAssign = true }: { canAssign?: boolean }
 
                     <div>
                       <Label className="mb-1.5 block text-[13px] font-medium text-slate-700">Vehicle <span className="text-red-600">*</span></Label>
-                      <Select value={selectedVehicle} onValueChange={value => { setSelectedVehicle(value); setSelectedHelpers([]); setHelperSlotCount(1); }}>
+                      <Select disabled={crewLocked} value={selectedVehicle} onValueChange={value => { setSelectedVehicle(value); setSelectedHelpers([]); setHelperSlotCount(1); }}>
                         <SelectTrigger onBlur={() => touchAssignmentField('vehicle')} aria-required="true" aria-invalid={assignmentFieldError('vehicle', selectedVehicle)} className={`h-[42px] justify-start rounded-lg border border-slate-300 bg-white px-3 text-left text-sm text-slate-900 shadow-none focus:border-[#1a1f6e] focus:ring-2 focus:ring-[#1a1f6e]/20 [&>span]:flex-1 [&>span]:text-left [&>svg:last-child]:ml-auto ${assignmentFieldError('vehicle', selectedVehicle) ? 'border-red-500 focus:border-red-500 focus:ring-red-500/20' : ''}`}>
                           <TruckIcon className="mr-2 h-[18px] w-[18px] shrink-0 text-slate-500" aria-hidden="true" /><SelectValue placeholder="Select or type a vehicle" />
                         </SelectTrigger>
@@ -780,7 +792,7 @@ export default function Scheduling({ canAssign = true }: { canAssign?: boolean }
 
                     <div>
                       <Label className="mb-1.5 block text-[13px] font-medium text-slate-700">Driver <span className="text-red-600">*</span></Label>
-                      <Select value={selectedDriver} onValueChange={setSelectedDriver}>
+                      <Select disabled={crewLocked} value={selectedDriver} onValueChange={setSelectedDriver}>
                         <SelectTrigger onBlur={() => touchAssignmentField('driver')} aria-required="true" aria-invalid={assignmentFieldError('driver', selectedDriver)} className={`h-[42px] justify-start rounded-lg border border-slate-300 bg-white px-3 text-left text-sm text-slate-900 shadow-none focus:border-[#1a1f6e] focus:ring-2 focus:ring-[#1a1f6e]/20 [&>span]:flex-1 [&>span]:text-left [&>svg:last-child]:ml-auto ${assignmentFieldError('driver', selectedDriver) ? 'border-red-500 focus:border-red-500 focus:ring-red-500/20' : ''}`}>
                           <ContactRound className="mr-2 h-[18px] w-[18px] shrink-0 text-slate-500" aria-hidden="true" /><SelectValue placeholder="Select or type a driver" />
                         </SelectTrigger>
@@ -803,7 +815,7 @@ export default function Scheduling({ canAssign = true }: { canAssign?: boolean }
                           <div key={index}>
                             <div className="flex items-center gap-2">
                             <div className="min-w-0 flex-1">
-                            <Select value={selectedHelpers[index] || ''} onValueChange={value => handleHelperChange(index, value)}>
+                            <Select disabled={crewLocked} value={selectedHelpers[index] || ''} onValueChange={value => handleHelperChange(index, value)}>
                               <SelectTrigger onBlur={() => touchAssignmentField(`helper-${index}`)} aria-label={`Helper ${index + 1}`} aria-required={index < minHelperSlots} aria-invalid={assignmentFieldError(`helper-${index}`, selectedHelpers[index])} className={`h-[42px] justify-start rounded-lg border border-slate-300 bg-white px-3 text-left text-sm text-slate-900 shadow-none focus:border-[#1a1f6e] focus:ring-2 focus:ring-[#1a1f6e]/20 [&>span]:flex-1 [&>span]:text-left [&>svg:last-child]:ml-auto ${assignmentFieldError(`helper-${index}`, selectedHelpers[index]) ? 'border-red-500 focus:border-red-500 focus:ring-red-500/20' : ''}`}>
                                 <UsersRound className="mr-2 h-[18px] w-[18px] shrink-0 text-slate-500" aria-hidden="true" /><SelectValue placeholder="Select or type a helper" />
                               </SelectTrigger>
@@ -812,7 +824,7 @@ export default function Scheduling({ canAssign = true }: { canAssign?: boolean }
                               </SelectContent>
                             </Select>
                             </div>
-                            {helperSlots > minHelperSlots && (
+                            {!crewLocked && helperSlots > minHelperSlots && (
                               <button type="button" onClick={() => handleRemoveHelperSlot(index)} aria-label={`Remove helper ${index + 1}`} title="Remove helper" className="flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-lg border border-slate-300 text-slate-500 hover:bg-red-50 hover:text-red-600">
                                 <X className="h-4 w-4" aria-hidden="true" />
                               </button>
@@ -822,9 +834,9 @@ export default function Scheduling({ canAssign = true }: { canAssign?: boolean }
                           </div>
                         ))}
                       </div>
-                      <button type="button" onClick={handleAddHelperSlot} disabled={helperSlots >= availableHelpers.length} className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-dashed border-[#1a1f6e]/40 px-3 py-2 text-sm font-medium text-[#1a1f6e] hover:bg-[#1a1f6e]/5 disabled:cursor-not-allowed disabled:opacity-50">
+                      {!crewLocked && <button type="button" onClick={handleAddHelperSlot} disabled={helperSlots >= availableHelpers.length} className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-dashed border-[#1a1f6e]/40 px-3 py-2 text-sm font-medium text-[#1a1f6e] hover:bg-[#1a1f6e]/5 disabled:cursor-not-allowed disabled:opacity-50">
                         <Plus className="h-4 w-4" aria-hidden="true" /> Add Another Helper
-                      </button>
+                      </button>}
                     </div>
                   </div>
 

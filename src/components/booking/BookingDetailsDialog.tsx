@@ -82,7 +82,7 @@ export default function BookingDetailsDialog({ booking, onClose }: { booking: Bo
             <DetailCard title="Service">
               <DetailRow label="Service Type" value={booking.serviceType || booking.service} />
               {truck?.truckTypeId && <DetailRow label="Truck Type" value={truck.truckTypeId} />}
-              {truck?.name && <DetailRow label="Preferred Truck" value={`${truck.name} — ₱${Number(truck.rate).toLocaleString()}`} />}
+              {truck?.name && <DetailRow label="Preferred Truck" value={truck.name} />}
             </DetailCard>
 
             <DetailCard title="Route & Schedule">

@@ -1,6 +1,7 @@
 import PageHeader from '../../components/pageheader/Pageheader';
+import ExportMenu from '../../components/ui/ExportMenu';
 import type { LucideIcon } from 'lucide-react';
-import { useEffect, useMemo, useState, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import { useApp } from '../../contexts/AppContext';
 import { api } from '../../lib/api';
 import { normalizeBookingStatus } from '../../lib/booking';
@@ -11,44 +12,42 @@ import KPICard from '../../components/shared/KpiCard';
 import { tableCellClasses, tableClasses, tableHeadClasses, tableHeaderCellClasses, tableRowClasses } from '../../components/ui/StandardTable';
 import { Link } from 'react-router-dom';
 import DemandForecastDashboard from '../../components/reports/DemandForecastDashboard';
+import OperationalReport from '../../components/reports/operational/OperationalReport';
+import MonthlyReport from '../../components/reports/monthly/MonthlyReport';
+import { monthlyWindow } from '../../components/reports/monthly/monthlyReport.logic';
+import { formatRange as formatOperationalRange, monthLabel, vehiclePercent, type OperationalReportData, type ResourcesSnapshotData } from '../../components/reports/operational/operationalReport.logic';
+import type { AiInsightsResponse, ForecastDashboard, ForecastHorizon } from '../../components/reports/forecast/types';
+import { formatRange as formatForecastRange, horizonOptions } from '../../components/reports/forecast/format';
 import { toast } from 'sonner';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/Select';
 import { DayPicker, type DateRange } from 'react-day-picker';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/Select';
 import {
   BarChart,
   Bar,
   XAxis,
   YAxis,
   CartesianGrid,
-  LineChart,
-  Line,
   Tooltip,
   ResponsiveContainer,
-  LabelList,
-  Area,
-  AreaChart,
+  Cell,
+  ReferenceLine,
 } from 'recharts';
 import {
   CalendarDays,
   CheckCircle,
   PhilippinePeso,
   FileText,
-  Download,
   FileSpreadsheet,
-  TrendingUp,
   Truck,
   Save,
-  PieChart as PieChartIcon,
-  Sparkles,
-  Users,
-  Timer,
   Package,
-  TruckIcon,
   BarChart3,
   ChevronDown,
-  ChevronRight,
-  UserRound,
   UsersRound,
+  AlertTriangle,
+  Wallet,
+  Info,
+  RotateCcw,
 } from 'lucide-react';
 
 interface Booking {
@@ -140,22 +139,6 @@ interface Driver {
 
 const REPORT_SERVICES = ['Corporate Delivery', 'Lipat Bahay', 'Office Pull out', 'Unit to Unit Transfer'] as const;
 
-interface ForecastResponse {
-  predictedBookings: number;
-  confidence: number | null;
-  forecastData: { label: string; date?: string; forecast: number }[];
-  historicalData: { date: string; count: number }[];
-  serviceDemand: { service: string; historical: number; forecast: number }[];
-  averageVehiclesPerBooking: number | null;
-  averageDriversPerBooking: number | null;
-  averageHelpersPerBooking: number | null;
-  expectedPeakDemand: { date: string; bookings: number } | null;
-  accuracy: { historicalBookingsUsed: number; mae: number | null; mape: number | null };
-  recommendations: string[];
-  summaryText: string;
-  explanation: string;
-}
-
 interface SavedReport {
   id: number;
   reportType: string;
@@ -167,17 +150,10 @@ interface SavedReport {
   rawMetrics: Record<string, unknown>;
 }
 
-const FORECAST_LIMITED_DATA_THRESHOLD = 30;
-const FORECAST_CONFIDENCE_LOW_THRESHOLD = 50;
-const FORECAST_CONFIDENCE_HIGH_THRESHOLD = 75;
+/** Bookings have no end time; the daily "jobs running by hour" chart assumes each job takes this long. */
+const DAILY_JOB_HOURS = 4;
 
-const COLORS = ['#1a1f6e', '#d4a72c', '#0ea5e9', '#10b981', '#f59e0b', '#8b5cf6', '#ef4444'];
 const PHP_CURRENCY_FORMATTER = new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' });
-const PHP_COMPACT_CURRENCY_FORMATTER = new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP', notation: 'compact', maximumFractionDigits: 2 });
-
-function toDateInputValue(d: Date) {
-  return d.toISOString().slice(0, 10);
-}
 
 function getManilaDateInputValue(date = new Date()) {
   const parts = new Intl.DateTimeFormat('en-CA', {
@@ -188,10 +164,6 @@ function getManilaDateInputValue(date = new Date()) {
 }
 
 function formatPeso(n: number) {
-  return PHP_CURRENCY_FORMATTER.format(n);
-}
-
-function formatPesoCompact(n: number) {
   return PHP_CURRENCY_FORMATTER.format(n);
 }
 
@@ -214,6 +186,21 @@ function timeToMinutes(value: string | null | undefined): number | null {
     hour = (hour % 12) + (period === 'PM' ? 12 : 0);
   } else if (hour > 23) return null;
   return hour * 60 + minute;
+}
+
+function formatTimeLabel(value: string | null | undefined) {
+  const minutes = timeToMinutes(value);
+  if (minutes === null) return value?.trim() || '—';
+  const hour = Math.floor(minutes / 60);
+  return `${hour % 12 === 0 ? 12 : hour % 12}:${String(minutes % 60).padStart(2, '0')} ${hour < 12 ? 'AM' : 'PM'}`;
+}
+
+function formatHourLabel(hour: number) {
+  return `${hour % 12 === 0 ? 12 : hour % 12}:00 ${hour % 24 < 12 ? 'AM' : 'PM'}`;
+}
+
+function dailyStatusLabel(status: string) {
+  return status === 'Scheduled' ? 'Assigned' : status;
 }
 
 function getDefaultRange() {
@@ -267,7 +254,6 @@ export default function Reports() {
   const [dailySalesRecords, setDailySalesRecords] = useState<DailySalesRecord[]>([]);
   const [dailySalesLoadError, setDailySalesLoadError] = useState(false);
   const [bookingLoadError, setBookingLoadError] = useState(false);
-  const [dailyChartDays, setDailyChartDays] = useState<7 | 30 | 90>(7);
   const [monthlyRange, setMonthlyRange] = useState<6 | 12 | 24>(12);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [drivers, setDrivers] = useState<Driver[]>([]);
@@ -280,13 +266,19 @@ export default function Reports() {
   const garage = 'All';
   const [selectedService, setSelectedService] = useState('All');
   const [selectedVehicleId, setSelectedVehicleId] = useState('All');
-  const [forecastHorizon, setForecastHorizon] = useState<'7days' | '30days' | '90days'>('30days');
+  const [operationalData, setOperationalData] = useState<{ report: OperationalReportData | null; snapshot: ResourcesSnapshotData | null }>({ report: null, snapshot: null });
+  const handleOperationalData = useCallback((data: { report: OperationalReportData | null; snapshot: ResourcesSnapshotData | null }) => setOperationalData(data), []);
+  const [forecastHorizon, setForecastHorizon] = useState<ForecastHorizon>('30days');
   const [reportType, setReportType] = useState<'daily' | 'operational' | 'monthly' | 'forecast'>('daily');
   const [activeSection, setActiveSection] = useState<'daily' | 'operational' | 'monthly' | 'forecast'>('daily');
 
-  const [forecast, setForecast] = useState<ForecastResponse | null>(null);
+  const [forecast, setForecast] = useState<ForecastDashboard | null>(null);
   const [forecastLoading, setForecastLoading] = useState(false);
   const [forecastError, setForecastError] = useState<string | null>(null);
+  const [aiInsights, setAiInsights] = useState<AiInsightsResponse | null>(null);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
+  const aiRequestId = useRef(0);
   const [savingReport, setSavingReport] = useState(false);
 
   const [, setSavedReports] = useState<SavedReport[]>([]);
@@ -296,9 +288,10 @@ export default function Reports() {
   const dataLoadInFlight = useRef(false);
   const dataHasLoaded = useRef(false);
   const autoSavedReportKeys = useRef(new Set<string>());
-  const autoSavedForecastKeys = useRef(new Set<string>());
   const forecastRequestId = useRef(0);
-  const forecastInputsKey = JSON.stringify([dateFrom, dateTo, selectedService, selectedVehicleId, forecastHorizon]);
+  // The forecast tab has no filter bar: it always learns from the last 12 months of all bookings.
+  const forecastHistory = getDefaultRange();
+  const forecastInputsKey = JSON.stringify([forecastHistory.start, forecastHistory.end, forecastHorizon]);
   const previousForecastInputsKey = useRef(forecastInputsKey);
   const previousReportType = useRef(reportType);
 
@@ -322,11 +315,10 @@ export default function Reports() {
 
   useEffect(() => {
     if (reportType === 'monthly' && previousReportType.current !== 'monthly') {
-      const now = new Date();
-      const start = new Date(now.getFullYear(), now.getMonth() - 11, 1);
-      const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-      setDateFrom(toDateInputValue(start));
-      setDateTo(toDateInputValue(end));
+      // Exactly 12 calendar months ending with this Manila month (toISOString would shift each day back by one).
+      const window = monthlyWindow(12, getManilaDateInputValue());
+      setDateFrom(window.start);
+      setDateTo(window.end);
       setMonthlyRange(12);
     }
     previousReportType.current = reportType;
@@ -336,10 +328,18 @@ export default function Reports() {
     if (previousForecastInputsKey.current === forecastInputsKey) return;
     previousForecastInputsKey.current = forecastInputsKey;
     forecastRequestId.current += 1;
+    aiRequestId.current += 1;
     setForecast(null);
     setForecastError(null);
     setForecastLoading(false);
+    setAiInsights(null);
+    setAiError(null);
+    setAiLoading(false);
   }, [forecastInputsKey]);
+
+  // The forecast is generated on demand: the Admin clicks "Generate Forecast" (see
+  // DemandForecastDashboard). Changing the period clears the old result above, so
+  // a new forecast is only run when asked for.
 
   async function loadData() {
     if (dataLoadInFlight.current) return;
@@ -414,11 +414,11 @@ export default function Reports() {
         garage: garage === 'All' ? null : garage,
         kpis: {
           ...(reportType === 'forecast' && forecast ? {
-            predictedBookings: forecast.predictedBookings,
-            forecastConfidence: forecast.confidence,
-            historicalBookingsUsed: forecast.accuracy.historicalBookingsUsed,
-            mae: forecast.accuracy.mae,
-            mape: forecast.accuracy.mape,
+            predictedBookings: forecast.demand?.totalForecast ?? null,
+            forecastPeriod: `${forecast.params.forecastStart}:${forecast.params.forecastEnd}`,
+            historicalBookingsUsed: forecast.dataQuality.trainingBookings,
+            mae: forecast.evaluation.backtest.mae,
+            mape: forecast.evaluation.backtest.mape,
           } : {
             totalBookings: kpis.total,
             completedJobs: reportType === 'operational' ? operationalSnapshot.completedBookings : kpis.completed,
@@ -432,7 +432,7 @@ export default function Reports() {
           vehicleAssignmentCounts: fleetUtilization,
           operationalMetrics: operationalSnapshot,
           jobOrderStatusDistribution,
-          vehicleStatus,
+          vehicleStatus: operationalData.snapshot?.vehicles ?? null,
           ...(reportType === 'forecast' && forecast ? { demandForecast: forecast } : {}),
         },
         rawMetrics: {
@@ -454,21 +454,24 @@ export default function Reports() {
     }
   }
 
+  function forecastRequestBody() {
+    return { startDate: forecastHistory.start, endDate: forecastHistory.end, serviceType: 'All', garage, vehicleId: 'All', forecastHorizon };
+  }
+
+  /** One request returns the data for all four forecast tabs; the current view stays visible while it refreshes. */
   async function loadForecast() {
     const requestId = ++forecastRequestId.current;
     setForecastLoading(true);
-    setForecast(null);
     setForecastError(null);
     try {
-      const res = await api.post<ForecastResponse>('/reports/forecast', {
-        startDate: dateFrom,
-        endDate: dateTo,
-        serviceType: selectedService,
-        garage,
-        vehicleId: selectedVehicleId,
-        forecastHorizon,
-      });
-      if (requestId === forecastRequestId.current) setForecast(res.data);
+      const res = await api.post<ForecastDashboard>('/reports/forecast', forecastRequestBody());
+      if (requestId === forecastRequestId.current) {
+        setForecast(res.data);
+        aiRequestId.current += 1;
+        setAiInsights(null);
+        setAiError(null);
+        setAiLoading(false);
+      }
     } catch (error) {
       if (requestId !== forecastRequestId.current) return;
       const message = (error as { response?: { data?: { message?: string | string[] } } })
@@ -476,12 +479,31 @@ export default function Reports() {
       setForecastError(
         Array.isArray(message)
           ? message.join(', ')
-          : message || 'No AI forecast is available right now.',
+          : message || 'The forecast could not be loaded right now.',
       );
     } finally {
       if (requestId === forecastRequestId.current) setForecastLoading(false);
     }
   }
+
+  /** Asks the LLM to interpret the computed forecast; called when the AI Insights tab is opened. */
+  async function loadAiInsights(force = false) {
+    const requestId = ++aiRequestId.current;
+    setAiLoading(true);
+    setAiError(null);
+    try {
+      const res = await api.post<AiInsightsResponse>('/reports/forecast/insights', { ...forecastRequestBody(), ...(force ? { refreshInsights: true } : {}) });
+      if (requestId === aiRequestId.current) setAiInsights(res.data);
+    } catch {
+      if (requestId === aiRequestId.current) setAiError('The AI interpretation could not be loaded. Rule-based insights from the forecast data are shown instead.');
+    } finally {
+      if (requestId === aiRequestId.current) setAiLoading(false);
+    }
+  }
+
+  const loadAiInsightsRef = useRef(loadAiInsights);
+  loadAiInsightsRef.current = loadAiInsights;
+  const loadAiInsightsCallback = useCallback((force?: boolean) => { void loadAiInsightsRef.current(force); }, []);
 
   const vehicleByBooking = useMemo(() => {
     const byBooking = new Map<string, string>();
@@ -624,45 +646,63 @@ export default function Reports() {
     return Array.from(counts, ([name, assignedJobs]) => ({ name, assignedJobs }));
   }, [dispatchAssignments, vehicles, bookingsByReference, filteredBookingIds, dateFrom, dateTo, selectedService, selectedVehicleId]);
 
-  const forecastChartData = useMemo(() => {
-    if (!forecast) return [];
-    return forecast.forecastData.map((p) => ({
-      label: p.label,
-      forecast: p.forecast,
-    }));
-  }, [forecast]);
+  // Daily report computations. Everything here is about bookings scheduled for today (Manila).
+  const todayBookings = useMemo(() => {
+    const todayKey = getManilaDateInputValue();
+    return bookings
+      .filter((booking) => booking.date?.slice(0, 10) === todayKey
+        && (selectedService === 'All' || booking.service === selectedService)
+        && (selectedVehicleId === 'All' || vehicleByBooking.get(booking.id) === selectedVehicleId))
+      .sort((a, b) => (timeToMinutes(a.preferredTime) ?? 24 * 60) - (timeToMinutes(b.preferredTime) ?? 24 * 60));
+  }, [bookings, selectedService, selectedVehicleId, vehicleByBooking]);
 
-  // Daily report computations
-  const dailyBookingSummary = useMemo(() => {
-    const reportDay = getManilaDateInputValue();
-    const buckets: { label: string; date: string; count: number }[] = [];
-    const end = new Date(`${reportDay}T00:00:00`);
-    if (Number.isNaN(end.getTime())) return [];
-    const start = new Date(end);
-    start.setDate(end.getDate() - dailyChartDays + 1);
-    for (const d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-      const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-      const labelDate = new Date(`${dateStr}T00:00:00`);
-      buckets.push({
-        label: labelDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-        date: dateStr,
-        count: 0,
-      });
-    }
-    const chartStartKey = `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}-${String(start.getDate()).padStart(2, '0')}`;
-    const chartEndKey = reportDay;
-    const serviceAndVehicleBookings = bookings.filter((b) =>
-      normalizeBookingStatus(b.status) !== 'Cancelled' &&
-      (selectedService === 'All' || b.service === selectedService) &&
-      (selectedVehicleId === 'All' || vehicleByBooking.get(b.id) === selectedVehicleId));
-    serviceAndVehicleBookings.forEach((b) => {
-      const bookingDate = b.createdAt ? getManilaDateInputValue(new Date(b.createdAt)) : undefined;
-      if (!bookingDate || bookingDate < chartStartKey || bookingDate > chartEndKey) return;
-      const bucket = buckets.find((bk) => bk.date === bookingDate);
-      if (bucket) bucket.count += 1;
+  const salesByService = useMemo(() => {
+    const map = new Map<string, { service: string; amount: number; count: number }>();
+    todayBookings.forEach((booking) => {
+      if (normalizeBookingStatus(booking.status) === 'Cancelled') return;
+      const service = booking.service || 'Other';
+      const entry = map.get(service) ?? { service, amount: 0, count: 0 };
+      entry.amount += toNumber(booking.amount);
+      entry.count += 1;
+      map.set(service, entry);
     });
-    return buckets;
-  }, [bookings, dailyChartDays, selectedService, selectedVehicleId, vehicleByBooking]);
+    return Array.from(map.values()).sort((a, b) => b.amount - a.amount);
+  }, [todayBookings]);
+
+  // Trucks that can take a job today: active and not in the shop.
+  const freeTrucks = useMemo(() => vehicles.filter((vehicle) => vehicle.isActive !== false
+    && !['UNDER_MAINTENANCE', 'UNDER_REPAIR'].includes(vehicle.status)).length, [vehicles]);
+  const freeHelpers = useMemo(() => helpers.filter((helper) => helper.status.trim().toLowerCase() === 'available').length, [helpers]);
+
+  // Bookings carry a start time but no end time, so each job is treated as a
+  // DAILY_JOB_HOURS block from its preferred time when counting jobs running at once.
+  const jobsByHour = useMemo(() => {
+    const blocks = todayBookings.flatMap((booking) => {
+      if (normalizeBookingStatus(booking.status) === 'Cancelled') return [];
+      const start = timeToMinutes(booking.preferredTime);
+      return start === null ? [] : [{ start, end: start + DAILY_JOB_HOURS * 60 }];
+    });
+    const unscheduled = todayBookings.filter((booking) => normalizeBookingStatus(booking.status) !== 'Cancelled' && timeToMinutes(booking.preferredTime) === null).length;
+    if (blocks.length === 0) return { hours: [] as { hour: number; label: string; jobs: number }[], peak: 0, overStart: null as number | null, overEnd: null as number | null, unscheduled };
+    const firstHour = Math.min(8, Math.floor(Math.min(...blocks.map((b) => b.start)) / 60));
+    const lastHour = Math.min(23, Math.max(18, Math.ceil(Math.max(...blocks.map((b) => b.end)) / 60) - 1));
+    const hours = [];
+    for (let hour = firstHour; hour <= lastHour; hour += 1) {
+      const slotStart = hour * 60;
+      const slotEnd = slotStart + 60;
+      const jobs = blocks.filter((b) => b.start < slotEnd && b.end > slotStart).length;
+      const label = `${hour % 12 === 0 ? 12 : hour % 12} ${hour < 12 ? 'AM' : 'PM'}`;
+      hours.push({ hour, label, jobs });
+    }
+    const over = hours.filter((h) => h.jobs > freeTrucks);
+    return {
+      hours,
+      peak: Math.max(...hours.map((h) => h.jobs)),
+      overStart: over.length ? over[0].hour : null,
+      overEnd: over.length ? over[over.length - 1].hour + 1 : null,
+      unscheduled,
+    };
+  }, [todayBookings, freeTrucks]);
 
   const paymentTracking = useMemo(() => {
     const todayKey = getManilaDateInputValue();
@@ -734,17 +774,6 @@ export default function Reports() {
     };
   }, [bookings, dailySalesRecords, selectedService, selectedVehicleId, paymentTracking, vehicleByBooking]);
 
-  const recentBookings = useMemo(() => {
-    const todayReceivedDate = getManilaDateInputValue();
-    return bookings
-      .filter((booking) => booking.createdAt
-        && !Number.isNaN(new Date(booking.createdAt).getTime())
-        && getManilaDateInputValue(new Date(booking.createdAt)) === todayReceivedDate
-        && (selectedService === 'All' || booking.service === selectedService)
-        && (selectedVehicleId === 'All' || vehicleByBooking.get(booking.id) === selectedVehicleId))
-      .sort((a, b) => new Date(b.createdAt!).getTime() - new Date(a.createdAt!).getTime());
-  }, [bookings, selectedService, selectedVehicleId, vehicleByBooking]);
-
   // Operational metrics use the owning dispatch/completion records. A missing
   // source is represented as unavailable rather than as a zero or an estimate.
   const filteredAssignments = useMemo(() => dispatchAssignments.filter((assignment) => {
@@ -782,142 +811,28 @@ export default function Reports() {
     return Array.from(counts, ([name, value]) => ({ name, value }));
   }, [filteredJobOrders]);
 
-  const activeJobOrders = useMemo(() => ({
-    count: filteredJobOrders.length,
-    pendingDistribution: filteredJobOrders.filter((item) => String(item.status || '').trim().toLowerCase() === 'pending').length,
-  }), [filteredJobOrders]);
 
-  const crewOnDuty = useMemo(() => {
-    const onDutyDrivers = drivers.filter((d) =>
-      (d.crewStatus || d.crew_status || d.status || '').trim().toLowerCase() === 'on duty'
-    ).length;
-    const onDutyHelpers = helpers.filter((helper) => helper.status.trim().toLowerCase() === 'on duty').length;
-    return { drivers: onDutyDrivers, helpers: onDutyHelpers };
-  }, [drivers, helpers]);
-
-  const crewSummary = useMemo(() => {
-    const assignedDrivers = new Set(filteredAssignments.flatMap((assignment) => assignment.driverId ? [assignment.driverId] : []));
-    const assignedHelpers = new Set(filteredAssignments.flatMap((assignment) => assignment.helperIds || []));
+  // Operational Report figures come from GET /reports/operational and /reports/resources-snapshot
+  // (see components/reports/operational). This snapshot feeds Save and the automatic save.
+  const operationalSnapshot = useMemo(() => {
+    const report = operationalData.report;
+    const resources = operationalData.snapshot;
     return {
-      availableDrivers: drivers.filter((driver) => driver.status.trim().toLowerCase() === 'available').length,
-      availableHelpers: helpers.filter((helper) => helper.status.trim().toLowerCase() === 'available').length,
-      assignedCrew: assignedDrivers.size + assignedHelpers.size,
+      definitionsSource: 'analytics /reports/operational',
+      bookingCount: report?.totals.bookings ?? null,
+      includesCancelledInTotal: report?.params?.includesCancelledInTotal ?? null,
+      bookingsWithVehicle: report?.totals.withVehicle ?? null,
+      bookingsUnassigned: report?.totals.unassigned ?? null,
+      bookingsWithVehicleRate: report ? vehiclePercent(report.totals) : null,
+      completedBookings: report?.totals.completed ?? null,
+      cancelledBookings: report?.totals.cancelled ?? null,
+      jobOrders: report?.totals.jobOrders ?? null,
+      jobOrdersNotDistributed: report?.totals.jobOrdersNotDistributed ?? null,
+      monthly: report?.monthly ?? [],
+      jobsPerVehicle: report?.jobsPerVehicle ?? [],
+      resourcesSnapshot: resources,
     };
-  }, [drivers, helpers, filteredAssignments]);
-
-  const onTimeArrival = useMemo(() => {
-    let onTime = 0;
-    let delayed = 0;
-    let unmeasurable = 0;
-    const bookingRefs = new Set(filteredBookings.flatMap((booking) => [booking.id, booking.bookingId, booking.bookingNo].filter((key): key is string => Boolean(key))));
-    filteredPostServiceRecords.forEach((record) => {
-      const booking = bookingsByReference.get(record.bookingId || '') || bookingsByReference.get(record.bookingNo || '');
-      if (!booking || !bookingRefs.has(booking.id)) return;
-      const actual = timeToMinutes(record.arrivalTime);
-      const scheduled = timeToMinutes(booking.preferredTime);
-      if (actual === null || scheduled === null) { unmeasurable += 1; return; }
-      if (actual <= scheduled) onTime += 1;
-      else delayed += 1;
-    });
-    const measured = onTime + delayed;
-    return {
-      rate: measured ? Math.round((onTime / measured) * 100) : null,
-      onTime, delayed, measured, unmeasurable,
-      unavailable: postServiceLoadError || bookingLoadError,
-    };
-  }, [filteredPostServiceRecords, postServiceLoadError, bookingLoadError, bookingsByReference, filteredBookings]);
-
-  const operationalFleetUtilization = useMemo(() => {
-    const eligible = filteredBookings.filter((booking) => normalizeBookingStatus(booking.status) !== 'Cancelled');
-    const assigned = new Set(filteredAssignments.map((assignment) => assignment.bookingUuid)).size;
-    return {
-      rate: assignmentLoadError || bookingLoadError ? null : eligible.length ? Math.round((assigned / eligible.length) * 100) : 0,
-      assigned,
-      total: bookingLoadError ? null : eligible.length,
-      unavailable: assignmentLoadError || bookingLoadError,
-    };
-  }, [filteredBookings, filteredAssignments, assignmentLoadError, bookingLoadError]);
-
-  const completedVsCancelled = useMemo(() => {
-    if (!dateFrom || !dateTo) return [];
-    const start = new Date(`${dateFrom}T00:00:00`);
-    const end = new Date(`${dateTo}T00:00:00`);
-    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end < start) return [];
-    const months: { monthKey: string; label: string; completed: number; cancelled: number }[] = [];
-    const cursor = new Date(start);
-    cursor.setDate(1);
-    while (cursor <= end) {
-      const monthKey = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}`;
-      const label = cursor.toLocaleString('en-US', { month: 'short', year: '2-digit' });
-      months.push({ monthKey, label, completed: 0, cancelled: 0 });
-      cursor.setMonth(cursor.getMonth() + 1);
-    }
-    const completedIds = new Set<string>();
-    filteredPostServiceRecords.forEach((record) => {
-      const booking = bookingsByReference.get(record.bookingId || '') || bookingsByReference.get(record.bookingNo || '');
-      if (!booking || completedIds.has(booking.id)) return;
-      const monthKey = (record.date || booking.date || '').slice(0, 7);
-      const month = months.find((entry) => entry.monthKey === monthKey);
-      if (month) {
-        month.completed += 1;
-        completedIds.add(booking.id);
-      }
-    });
-    filteredBookings.forEach((b) => {
-      const key = b.date?.slice(0, 7);
-      const month = months.find((m) => m.monthKey === key);
-      if (month) {
-        const status = normalizeBookingStatus(b.status);
-        if (status === 'Cancelled') month.cancelled += 1;
-      }
-    });
-    return months;
-  }, [filteredBookings, filteredPostServiceRecords, bookingsByReference, dateFrom, dateTo]);
-
-  const vehicleStatus = useMemo(() => {
-    const map = new Map<string, number>();
-    const displayMap: Record<string, string> = {
-      AVAILABLE: 'Available',
-      'In Transit': 'Assigned',
-      UNDER_MAINTENANCE: 'Under Maintenance',
-      UNDER_REPAIR: 'Under Repair',
-    };
-    const reportVehicles = selectedVehicleId === 'All' ? vehicles : vehicles.filter((vehicle) => vehicle.id === selectedVehicleId);
-    reportVehicles.forEach((v) => {
-      const backendStatus = v.status;
-      let display = displayMap[backendStatus] || backendStatus || 'Unknown';
-      if (backendStatus === 'AVAILABLE' && v.isAssigned) display = 'Assigned';
-      map.set(display, (map.get(display) || 0) + 1);
-    });
-    const knownStatuses = ['Available', 'Assigned', 'Unassigned', 'Under Maintenance', 'Under Repair']
-      .map((name) => ({ name, value: map.get(name) || 0 }));
-    const otherStatuses = Array.from(map.entries())
-      .filter(([name]) => name !== 'Unassigned' && !knownStatuses.some((status) => status.name === name))
-      .map(([name, value]) => ({ name, value }));
-    return [...knownStatuses.filter((status) => status.name !== 'Unassigned'), ...otherStatuses];
-  }, [vehicles, selectedVehicleId]);
-
-  const operationalSnapshot = useMemo(() => ({
-    bookingCount: bookingLoadError ? null : filteredBookings.length,
-    confirmedVehicleAssignments: operationalFleetUtilization.assigned,
-    eligibleBookings: operationalFleetUtilization.total,
-    confirmedVehicleAssignmentRate: operationalFleetUtilization.rate,
-    activeJobOrders: activeJobOrders.count,
-    pendingJobOrders: activeJobOrders.pendingDistribution,
-    completedBookings: bookingLoadError || postServiceLoadError ? null : completedVsCancelled.reduce((sum, month) => sum + month.completed, 0),
-    cancelledBookings: bookingLoadError ? null : completedVsCancelled.reduce((sum, month) => sum + month.cancelled, 0),
-    measuredOnTimeArrivals: onTimeArrival.measured,
-    onTimeArrivals: onTimeArrival.onTime,
-    delayedArrivals: onTimeArrival.delayed,
-    onTimeArrivalRate: onTimeArrival.rate,
-    currentOnDutyDrivers: crewLoadError ? null : crewOnDuty.drivers,
-    currentOnDutyHelpers: crewLoadError ? null : crewOnDuty.helpers,
-    dispatchDataAvailable: !assignmentLoadError && !jobOrderLoadError,
-    postServiceDataAvailable: !postServiceLoadError,
-    crewDataAvailable: !crewLoadError,
-    bookingDataAvailable: !bookingLoadError,
-    vehicleDataAvailable: !vehicleLoadError,
-  }), [filteredBookings.length, operationalFleetUtilization, activeJobOrders, completedVsCancelled, onTimeArrival, crewLoadError, crewOnDuty, assignmentLoadError, jobOrderLoadError, postServiceLoadError, bookingLoadError, vehicleLoadError]);
+  }, [operationalData]);
 
   // Monthly report computations. Revenue and payment methods come from verified
   // Daily Sales rows; trip counts continue to come from bookings.
@@ -938,18 +853,32 @@ export default function Reports() {
     });
   }, [dailySalesRecords, monthlyEligibleBookings, dateFrom, dateTo]);
 
-  const ytdSalesRecords = useMemo(() => {
-    if (!dateTo) return [] as DailySalesRecord[];
-    const yearStart = `${dateTo.slice(0, 4)}-01-01`;
-    const bookingKeys = new Set(monthlyEligibleBookings.flatMap((booking) =>
-      [booking.id, booking.bookingId, booking.bookingNo].filter((key): key is string => Boolean(key))
-    ));
-    return dailySalesRecords.filter((record) => {
-      const recordDate = String(record.date || '').slice(0, 10);
-      const linked = [record.bookingId, record.bookingNo].some((key) => key && bookingKeys.has(key));
-      return linked && recordDate >= yearStart && recordDate <= dateTo;
+  // Trips are non-cancelled bookings whose service date has arrived (up to today, Manila).
+  // Later bookings in the window are counted separately as upcoming, never as trips.
+  const monthlyToday = getManilaDateInputValue();
+  const monthlyTripBookings = useMemo(() => filteredBookings.filter((booking) =>
+    normalizeBookingStatus(booking.status) !== 'Cancelled' && (booking.date || '').slice(0, 10) <= monthlyToday
+  ), [filteredBookings, monthlyToday]);
+  const monthlyUpcomingTrips = useMemo(() => filteredBookings.filter((booking) =>
+    normalizeBookingStatus(booking.status) !== 'Cancelled' && (booking.date || '').slice(0, 10) > monthlyToday
+  ).length, [filteredBookings, monthlyToday]);
+
+  /** The booking a verified sales row belongs to, so payments can be counted per booking. */
+  const monthlyBookingKeyOf = useMemo(() => {
+    const byKey = new Map<string, string>();
+    monthlyEligibleBookings.forEach((booking) => [booking.id, booking.bookingId, booking.bookingNo].forEach((key) => { if (key) byKey.set(key, booking.id); }));
+    return (record: DailySalesRecord) => byKey.get(record.bookingId ?? '') ?? byKey.get(record.bookingNo ?? '') ?? null;
+  }, [monthlyEligibleBookings]);
+
+  /** Bookings whose verified payments (net of refunds) are above zero, among the given sales rows. */
+  const countPaidBookings = useCallback((records: DailySalesRecord[]) => {
+    const net = new Map<string, number>();
+    records.forEach((record) => {
+      const key = monthlyBookingKeyOf(record);
+      if (key) net.set(key, (net.get(key) ?? 0) + toNumber(record.totalDailySales));
     });
-  }, [dailySalesRecords, monthlyEligibleBookings, dateTo]);
+    return [...net.values()].filter((value) => value > 0).length;
+  }, [monthlyBookingKeyOf]);
 
   const monthlyData = useMemo(() => {
     if (!dateFrom || !dateTo) return { months: [], latestMonth: null, previousMonth: null };
@@ -957,7 +886,7 @@ export default function Reports() {
     const end = new Date(`${dateTo}T00:00:00`);
     if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end < start) return { months: [], latestMonth: null, previousMonth: null };
 
-    const months: { label: string; year: number; month: number; revenue: number; trips: number }[] = [];
+    const months: { label: string; year: number; month: number; revenue: number; trips: number; paidTrips: number }[] = [];
     const cursor = new Date(start.getFullYear(), start.getMonth(), 1);
     while (cursor <= end) {
       months.push({
@@ -966,70 +895,55 @@ export default function Reports() {
         month: cursor.getMonth(),
         revenue: 0,
         trips: 0,
+        paidTrips: 0,
       });
       cursor.setMonth(cursor.getMonth() + 1);
     }
+    const monthOf = (day: string) => {
+      const date = new Date(`${day.slice(0, 10)}T00:00:00`);
+      return Number.isNaN(date.getTime()) ? undefined : months.find((m) => m.year === date.getFullYear() && m.month === date.getMonth());
+    };
 
+    const recordsByMonth = new Map<(typeof months)[number], DailySalesRecord[]>();
     monthlySalesRecords.forEach((record) => {
-      const recordDate = String(record.date || '').slice(0, 10);
-      const rd = new Date(`${recordDate}T00:00:00`);
-      if (Number.isNaN(rd.getTime())) return;
-      const month = months.find((m) => m.year === rd.getFullYear() && m.month === rd.getMonth());
-      if (month) month.revenue += toNumber(record.totalDailySales);
+      const month = monthOf(String(record.date || ''));
+      if (!month) return;
+      month.revenue += toNumber(record.totalDailySales);
+      recordsByMonth.set(month, [...(recordsByMonth.get(month) ?? []), record]);
     });
+    recordsByMonth.forEach((records, month) => { month.paidTrips = countPaidBookings(records); });
 
-    filteredBookings.forEach((b) => {
-      if (normalizeBookingStatus(b.status) === 'Cancelled') return;
-      const bd = b.date ? new Date(`${b.date.slice(0, 10)}T00:00:00`) : null;
-      if (!bd || Number.isNaN(bd.getTime())) return;
-      const month = months.find((m) => m.year === bd.getFullYear() && m.month === bd.getMonth());
-      if (month) {
-        month.trips += 1;
-      }
+    monthlyTripBookings.forEach((booking) => {
+      const month = booking.date ? monthOf(booking.date) : undefined;
+      if (month) month.trips += 1;
     });
 
     const latestMonth = months[months.length - 1] || null;
     const previousMonth = months.length > 1 ? months[months.length - 2] : null;
     return { months, latestMonth, previousMonth };
-  }, [filteredBookings, monthlySalesRecords, dateFrom, dateTo]);
+  }, [monthlyTripBookings, monthlySalesRecords, countPaidBookings, dateFrom, dateTo]);
 
   const monthlyKpis = useMemo(() => {
     const totalRevenue = monthlySalesRecords.reduce((sum, record) => sum + toNumber(record.totalDailySales), 0);
-    const totalTrips = filteredBookings.filter((booking) => normalizeBookingStatus(booking.status) !== 'Cancelled').length;
-    const avgRevenuePerTrip = totalTrips > 0 ? totalRevenue / totalTrips : 0;
-    const { latestMonth, previousMonth } = monthlyData;
-    const monthlyRevenue = latestMonth?.revenue || 0;
-    const previousMonthlyRevenue = previousMonth?.revenue || 0;
-    const monthlyRevenueChange = previousMonthlyRevenue > 0
-      ? ((monthlyRevenue - previousMonthlyRevenue) / previousMonthlyRevenue) * 100
-      : 0;
-    const latestAverage = latestMonth && latestMonth.trips > 0 ? latestMonth.revenue / latestMonth.trips : 0;
-    const previousAverage = previousMonth && previousMonth.trips > 0 ? previousMonth.revenue / previousMonth.trips : 0;
-    const avgChange = previousAverage > 0
-      ? ((latestAverage - previousAverage) / previousAverage) * 100
-      : 0;
-
-    const ytdRevenue = ytdSalesRecords.reduce((sum, record) => sum + toNumber(record.totalDailySales), 0);
-
+    const paidTrips = countPaidBookings(monthlySalesRecords);
     return {
-      monthlyRevenue,
-      monthlyRevenueChange,
-      ytdRevenue,
-      totalTrips,
-      avgRevenuePerTrip,
-      avgChange,
+      monthlyRevenue: monthlyData.latestMonth?.revenue || 0,
+      totalTrips: monthlyTripBookings.length,
+      upcomingTrips: monthlyUpcomingTrips,
+      paidTrips,
+      /** Verified revenue ÷ bookings with a verified payment; trips with no payment yet don't dilute it. */
+      avgRevenuePerPaidTrip: paidTrips > 0 ? totalRevenue / paidTrips : 0,
     };
-  }, [filteredBookings, monthlyData, monthlySalesRecords, ytdSalesRecords]);
+  }, [monthlyData, monthlySalesRecords, monthlyTripBookings, monthlyUpcomingTrips, countPaidBookings]);
 
   const monthlyServiceDistribution = useMemo(() => {
     const map = new Map<string, number>();
-    filteredBookings.forEach((b) => {
-      if (normalizeBookingStatus(b.status) === 'Cancelled') return;
+    monthlyTripBookings.forEach((b) => {
       const key = b.service || 'Unknown';
       map.set(key, (map.get(key) || 0) + 1);
     });
     return Array.from(map.entries()).map(([name, value]) => ({ name, value }));
-  }, [filteredBookings]);
+  }, [monthlyTripBookings]);
 
   const monthlyPaymentDistribution = useMemo(() => {
     const map = new Map<string, number>([['Cash', 0], ['BDO', 0], ['GCash', 0], ['Xendit', 0]]);
@@ -1056,19 +970,6 @@ export default function Reports() {
     return orderedLabels.map((name) => ({ name, value: map.get(name) || 0 }));
   }, [filteredBookings]);
 
-  const recommendedResources = useMemo(() => {
-    if (!forecast) return { trucks: 0, drivers: 0, helpers: 0 };
-    const predicted = forecast.predictedBookings || 0;
-    const avgTripsPerTruck = 30;
-    const avgTripsPerDriver = 20;
-    const avgTripsPerHelper = 15;
-    return {
-      trucks: Math.ceil(predicted / avgTripsPerTruck),
-      drivers: Math.ceil(predicted / avgTripsPerDriver),
-      helpers: Math.ceil(predicted / avgTripsPerHelper),
-    };
-  }, [forecast]);
-
   const reportAutoSaveKey = useMemo(() => JSON.stringify({
     reportType,
     dateFrom,
@@ -1092,13 +993,6 @@ export default function Reports() {
     sourceAvailability: [bookingLoadError, assignmentLoadError, jobOrderLoadError, postServiceLoadError, crewLoadError, vehicleLoadError],
   }), [reportType, dateFrom, dateTo, selectedService, selectedVehicleId, forecast, kpis, filteredBookings, filteredAssignments, filteredJobOrders, filteredPostServiceRecords, drivers, helpers, vehicles, bookingLoadError, assignmentLoadError, jobOrderLoadError, postServiceLoadError, crewLoadError, vehicleLoadError]);
 
-  const forecastAutoSaveKey = useMemo(() => forecast ? JSON.stringify({
-    dateFrom,
-    dateTo,
-    forecastHorizon,
-    forecast,
-  }) : null, [dateFrom, dateTo, forecastHorizon, forecast]);
-
   useEffect(() => {
     if (loading || autoSavedReportKeys.current.has(reportAutoSaveKey)) return;
 
@@ -1109,16 +1003,6 @@ export default function Reports() {
     // The key represents every report input and output that must be persisted.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, reportAutoSaveKey]);
-
-  useEffect(() => {
-    if (!forecastAutoSaveKey || forecastLoading || autoSavedForecastKeys.current.has(forecastAutoSaveKey)) return;
-
-    const timeout = window.setTimeout(() => {
-      void autoSaveForecast(forecastAutoSaveKey);
-    }, 500);
-    return () => window.clearTimeout(timeout);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [forecastAutoSaveKey, forecastLoading]);
 
   async function autoSaveCurrentReport(key: string) {
     if (autoSavedReportKeys.current.has(key)) return;
@@ -1138,7 +1022,7 @@ export default function Reports() {
           vehicleAssignmentCounts: fleetUtilization,
           operationalMetrics: operationalSnapshot,
           jobOrderStatusDistribution,
-          vehicleStatus,
+          vehicleStatus: operationalData.snapshot?.vehicles ?? null,
           ...(reportType === 'forecast' && forecast ? { demandForecast: forecast } : {}),
         },
         rawMetrics: {
@@ -1153,29 +1037,6 @@ export default function Reports() {
     } catch {
       autoSavedReportKeys.current.delete(key);
       toast.error('Automatic MySQL report save failed');
-    }
-  }
-
-  async function autoSaveForecast(key: string) {
-    if (!forecast || forecast.confidence === null || autoSavedForecastKeys.current.has(key)) return;
-    autoSavedForecastKeys.current.add(key);
-    try {
-      await api.post('/reports/forecast/save', {
-        forecastHorizon,
-        periodStart: dateFrom,
-        periodEnd: dateTo,
-        serviceType: selectedService === 'All' ? null : selectedService,
-        garage: garage === 'All' ? null : garage,
-        predictedBookings: forecast.predictedBookings,
-        confidence: forecast.confidence,
-        forecastData: forecast.forecastData,
-        recommendations: forecast.recommendations,
-        summaryText: forecast.summaryText,
-      });
-      await loadSavedReports();
-    } catch {
-      autoSavedForecastKeys.current.delete(key);
-      toast.error('Automatic MySQL forecast save failed');
     }
   }
 
@@ -1196,8 +1057,8 @@ export default function Reports() {
 
     if (activeSection === 'daily') {
       const unavailable = dailySalesLoadError || bookingLoadError;
-      const chartTotal = dailyBookingSummary.reduce((sum, day) => sum + day.count, 0);
-      const recentTotal = recentBookings.reduce((sum, booking) => sum + toNumber(booking.amount), 0);
+      const serviceTotal = salesByService.reduce((sum, row) => sum + row.amount, 0);
+      const todayTotal = todayBookings.reduce((sum, booking) => sum + (normalizeBookingStatus(booking.status) === 'Cancelled' ? 0 : toNumber(booking.amount)), 0);
       return {
         ...base,
         reportName: 'Daily Report',
@@ -1224,86 +1085,74 @@ export default function Reports() {
             ],
           },
           {
-            kind: 'table', title: 'Bookings received by day', note: `Non-cancelled bookings, last ${dailyChartDays} days`,
-            columns: [{ header: 'Date', key: 'date', width: 22 }, { header: 'Bookings received', key: 'count', format: 'number', width: 20 }],
-            rows: dailyBookingSummary.map((day) => ({ date: dateLabel(day.date, true), count: day.count })),
-            totals: { count: chartTotal },
+            kind: 'table', title: 'Sales by service', note: "Today's non-cancelled bookings", emptyText: 'No sales scheduled today.',
+            columns: [{ header: 'Service', key: 'service', width: 26 }, { header: 'Bookings', key: 'count', format: 'number', width: 12 }, { header: 'Sales', key: 'amount', format: 'peso', width: 18 }],
+            rows: salesByService.map((row) => ({ service: row.service, count: row.count, amount: row.amount })),
+            totals: { count: salesByService.reduce((sum, row) => sum + row.count, 0), amount: serviceTotal },
           },
           {
-            kind: 'table', title: 'Recent bookings', note: 'Bookings received today', emptyText: 'No bookings received today.',
+            kind: 'table', title: 'Jobs running by hour', note: `Each job counted as a ${DAILY_JOB_HOURS}-hour block from its start time; ${freeTrucks} trucks available`, emptyText: 'No timed bookings today.',
+            columns: [{ header: 'Hour', key: 'label', width: 12 }, { header: 'Jobs running', key: 'jobs', format: 'number', width: 16 }],
+            rows: jobsByHour.hours.map((hour) => ({ label: hour.label, jobs: hour.jobs })),
+          },
+          {
+            kind: 'table', title: "Today's bookings", note: `Scheduled for ${dateLabel(today, true)}`, emptyText: 'No bookings scheduled today.',
             columns: [
               { header: 'Booking no.', key: 'bookingNo', width: 22 }, { header: 'Client', key: 'client', width: 28 }, { header: 'Service', key: 'service', width: 24 },
-              { header: 'Service date', key: 'date', width: 16 }, { header: 'Status', key: 'status', width: 18 }, { header: 'Amount', key: 'amount', format: 'peso', width: 16 },
+              { header: 'Time', key: 'time', width: 12 }, { header: 'Status', key: 'status', width: 22 }, { header: 'Amount', key: 'amount', format: 'peso', width: 16 },
             ],
-            rows: recentBookings.map((booking) => ({
-              bookingNo: booking.bookingNo ?? '-', client: booking.client, service: booking.service, date: booking.date,
-              status: booking.status === 'Scheduled' ? 'Assigned' : booking.status, amount: toNumber(booking.amount),
+            rows: todayBookings.map((booking) => ({
+              bookingNo: booking.bookingNo ?? '-', client: booking.client, service: booking.service, time: formatTimeLabel(booking.preferredTime),
+              status: dailyStatusLabel(booking.status), amount: toNumber(booking.amount),
             })),
-            totals: { amount: recentTotal },
+            totals: { amount: todayTotal },
           },
         ],
       };
     }
 
     if (activeSection === 'operational') {
-      const completed = completedVsCancelled.reduce((sum, month) => sum + month.completed, 0);
-      const cancelled = completedVsCancelled.reduce((sum, month) => sum + month.cancelled, 0);
-      const completionUnavailable = bookingLoadError || postServiceLoadError;
-      const vehicleJobs = [...fleetUtilization].sort((a, b) => b.assignedJobs - a.assignedJobs);
-      const totalVehicleJobs = vehicleJobs.reduce((sum, vehicle) => sum + vehicle.assignedJobs, 0);
-      const totalVehicles = vehicleStatus.reduce((sum, item) => sum + item.value, 0);
-      const crewRows = [
-        { crew: 'Drivers', roster: drivers.length, available: crewSummary.availableDrivers, onDuty: crewOnDuty.drivers },
-        { crew: 'Helpers', roster: helpers.length, available: crewSummary.availableHelpers, onDuty: crewOnDuty.helpers },
-      ].map((row) => ({ ...row, unavailable: Math.max(0, row.roster - row.available - row.onDuty) }));
-      const unassigned = operationalFleetUtilization.total === null ? null : Math.max(0, operationalFleetUtilization.total - operationalFleetUtilization.assigned);
+      const report = operationalData.report;
+      if (!report) {
+        toast.error('The report is still loading. Try again in a moment.');
+        return null;
+      }
+      const { totals } = report;
+      const resources = operationalData.snapshot;
       return {
         ...base,
         reportName: 'Operational Report',
         fileStem: 'operational-report',
-        period: `${dateLabel(dateFrom)} to ${dateLabel(dateTo)}`,
+        period: formatOperationalRange(dateFrom, dateTo),
         sections: [
           {
             kind: 'metrics', title: 'Performance this period', items: [
-              { label: 'Bookings with a vehicle', value: operationalFleetUtilization.unavailable ? null : operationalFleetUtilization.rate ?? 0, format: 'percent', note: `${operationalFleetUtilization.assigned} of ${operationalFleetUtilization.total ?? 0} bookings` },
-              { label: 'Bookings still unassigned', value: operationalFleetUtilization.unavailable ? null : unassigned, format: 'number' },
-              { label: 'On-time arrival', value: onTimeArrival.unavailable ? null : onTimeArrival.rate, format: 'percent', note: `${onTimeArrival.onTime} on time, ${onTimeArrival.delayed} delayed, ${onTimeArrival.unmeasurable} without both times` },
-              { label: 'Completed services', value: completionUnavailable ? null : completed, format: 'number' },
-              { label: 'Cancelled bookings', value: completionUnavailable ? null : cancelled, format: 'number' },
-              { label: 'Cancellation rate', value: completionUnavailable || completed + cancelled === 0 ? null : share(cancelled, completed + cancelled), format: 'percent' },
-              { label: 'Job orders', value: jobOrderLoadError ? null : activeJobOrders.count, format: 'number' },
-              { label: 'Pending distribution', value: jobOrderLoadError ? null : activeJobOrders.pendingDistribution, format: 'number' },
+              { label: 'Total bookings', value: totals.bookings, format: 'number', note: report.params?.includesCancelledInTotal === false ? 'Received in this period, excluding cancelled' : 'Received in this period' },
+              { label: 'Bookings with a vehicle', value: vehiclePercent(totals), format: 'percent', note: `${totals.unassigned} still unassigned` },
+              { label: 'Completed services', value: totals.completed, format: 'number', note: `${totals.cancelled} cancelled` },
+              { label: 'Job orders', value: totals.jobOrders, format: 'number', note: totals.jobOrdersNotDistributed > 0 ? `${totals.jobOrdersNotDistributed} not yet distributed` : 'All distributed' },
             ],
           },
           {
-            kind: 'table', title: 'Completed vs cancelled', note: 'Closed jobs per month',
-            columns: [{ header: 'Month', key: 'month', width: 16 }, { header: 'Completed', key: 'completed', format: 'number' }, { header: 'Cancelled', key: 'cancelled', format: 'number' }, { header: 'Cancellation rate', key: 'rate', format: 'percent', width: 18 }],
-            rows: completionUnavailable ? [] : completedVsCancelled.map((month) => ({ month: month.label, completed: month.completed, cancelled: month.cancelled, rate: month.completed + month.cancelled > 0 ? share(month.cancelled, month.completed + month.cancelled) : null })),
-            totals: { completed, cancelled, rate: completed + cancelled > 0 ? share(cancelled, completed + cancelled) : null },
-            emptyText: completionUnavailable ? 'Booking or post-service records are unavailable.' : undefined,
+            kind: 'table', title: 'Completed vs cancelled jobs', note: 'Closed jobs per month',
+            columns: [{ header: 'Month', key: 'month', width: 16 }, { header: 'Completed', key: 'completed', format: 'number' }, { header: 'Cancelled', key: 'cancelled', format: 'number' }],
+            rows: report.monthly.map((month) => ({ month: monthLabel(month.month), completed: month.completed, cancelled: month.cancelled })),
+            totals: { completed: totals.completed, cancelled: totals.cancelled },
           },
           {
-            kind: 'table', title: 'Jobs per vehicle', note: 'Confirmed assignments in this period', emptyText: operationalFleetUtilization.unavailable ? 'Booking or dispatch records are unavailable.' : 'No vehicles assigned in this period.',
-            columns: [{ header: 'Rank', key: 'rank', format: 'number', width: 8 }, { header: 'Vehicle', key: 'vehicle', width: 26 }, { header: 'Jobs', key: 'jobs', format: 'number' }, { header: 'Share of jobs', key: 'share', format: 'percent' }],
-            rows: operationalFleetUtilization.unavailable ? [] : vehicleJobs.map((vehicle, index) => ({ rank: index + 1, vehicle: vehicle.name, jobs: vehicle.assignedJobs, share: share(vehicle.assignedJobs, totalVehicleJobs) })),
-            totals: { jobs: totalVehicleJobs, share: totalVehicleJobs > 0 ? 100 : 0 },
+            kind: 'table', title: 'Jobs per vehicle', note: 'Confirmed assignments in this period', emptyText: 'No vehicles assigned in this period.',
+            columns: [{ header: 'Rank', key: 'rank', format: 'number', width: 8 }, { header: 'Vehicle', key: 'vehicle', width: 30 }, { header: 'Jobs', key: 'jobs', format: 'number' }],
+            rows: report.jobsPerVehicle.map((vehicle, index) => ({ rank: index + 1, vehicle: vehicle.alias ? `${vehicle.plate} (${vehicle.alias})` : vehicle.plate, jobs: vehicle.jobs })),
           },
-          {
-            kind: 'table', title: 'Vehicle status', note: 'Current fleet status', emptyText: vehicleLoadError ? 'Vehicle records are unavailable.' : undefined,
-            columns: [{ header: 'Status', key: 'status', width: 24 }, { header: 'Vehicles', key: 'count', format: 'number' }, { header: 'Share of fleet', key: 'share', format: 'percent' }],
-            rows: vehicleLoadError ? [] : vehicleStatus.map((item) => ({ status: item.name, count: item.value, share: share(item.value, totalVehicles) })),
-            totals: { count: totalVehicles, share: totalVehicles > 0 ? 100 : 0 },
-          },
-          {
-            kind: 'table', title: 'Crew availability', note: assignmentLoadError ? 'Current roster status' : `Current roster status. ${crewSummary.assignedCrew} crew members were on confirmed assignments in this period.`,
-            emptyText: crewLoadError ? 'Driver and helper records are unavailable.' : undefined,
-            columns: [{ header: 'Crew', key: 'crew', width: 16 }, { header: 'On roster', key: 'roster', format: 'number' }, { header: 'Available', key: 'available', format: 'number' }, { header: 'On duty', key: 'onDuty', format: 'number' }, { header: 'Unavailable', key: 'unavailable', format: 'number' }],
-            rows: crewLoadError ? [] : crewRows,
-            totals: {
-              roster: crewRows.reduce((sum, row) => sum + row.roster, 0), available: crewRows.reduce((sum, row) => sum + row.available, 0),
-              onDuty: crewRows.reduce((sum, row) => sum + row.onDuty, 0), unavailable: crewRows.reduce((sum, row) => sum + row.unavailable, 0),
-            },
-          },
+          resources ? {
+            kind: 'table' as const, title: 'Resources right now', note: 'Today’s snapshot, not affected by the date range',
+            columns: [{ header: 'Resource', key: 'name', width: 14 }, { header: 'Total', key: 'total', format: 'number' as const }, { header: 'Available', key: 'available', format: 'number' as const }, { header: 'Assigned or on duty', key: 'busy', format: 'number' as const, width: 20 }, { header: 'Under maintenance', key: 'maintenance', format: 'number' as const, width: 20 }, { header: 'Under repair or on leave', key: 'unavailable', format: 'number' as const, width: 24 }],
+            rows: [
+              { name: 'Vehicles', total: resources.vehicles.total, available: resources.vehicles.available, busy: resources.vehicles.assigned, maintenance: resources.vehicles.underMaintenance, unavailable: resources.vehicles.underRepair },
+              { name: 'Drivers', total: resources.drivers.onRoster, available: resources.drivers.available, busy: resources.drivers.onDuty, maintenance: null, unavailable: resources.drivers.onLeave },
+              { name: 'Helpers', total: resources.helpers.onRoster, available: resources.helpers.available, busy: resources.helpers.onDuty, maintenance: null, unavailable: resources.helpers.onLeave },
+            ],
+          } : { kind: 'list' as const, title: 'Resources right now', items: ['Today’s fleet and roster couldn’t be loaded.'] },
         ],
       };
     }
@@ -1312,8 +1161,6 @@ export default function Reports() {
       const months = monthlyData.months;
       const latest = monthlyData.latestMonth;
       const previous = monthlyData.previousMonth;
-      const previousAverage = previous && previous.trips > 0 ? previous.revenue / previous.trips : 0;
-      const changeNote = (change: number, previousValue: number) => (previous && previousValue > 0 ? `${change >= 0 ? '+' : '-'}${Math.abs(change).toFixed(1)}% vs ${previous.label} ${previous.year}` : 'No previous month to compare');
       const rangeTrips = months.reduce((sum, month) => sum + month.trips, 0);
       const rangeRevenue = months.reduce((sum, month) => sum + month.revenue, 0);
       const serviceTotal = monthlyServiceDistribution.reduce((sum, item) => sum + item.value, 0);
@@ -1327,25 +1174,26 @@ export default function Reports() {
         sections: [
           {
             kind: 'metrics', title: 'Monthly performance', items: [
-              { label: `Revenue${latest ? `, ${latest.label} ${latest.year}` : ''}`, value: dailySalesLoadError ? null : monthlyKpis.monthlyRevenue, format: 'peso', note: changeNote(monthlyKpis.monthlyRevenueChange, previous?.revenue ?? 0) },
-              { label: 'Year-to-date revenue', value: dailySalesLoadError ? null : monthlyKpis.ytdRevenue, format: 'peso', note: `January to ${latest ? `${latest.label} ${latest.year}` : 'date'}` },
-              { label: 'Trips', value: monthlyKpis.totalTrips, format: 'number', note: 'Non-cancelled bookings in the period' },
-              { label: 'Average revenue per trip', value: dailySalesLoadError ? null : monthlyKpis.avgRevenuePerTrip, format: 'peso', note: changeNote(monthlyKpis.avgChange, previousAverage) },
+              { label: `Revenue${latest ? `, ${latest.label} ${latest.year}` : ''}`, value: dailySalesLoadError ? null : monthlyKpis.monthlyRevenue, format: 'peso', note: previous ? `${previous.label} ${previous.year}: ${formatPeso(previous.revenue)}` : 'No earlier month to compare' },
+              { label: `Revenue, last ${monthlyRange} months`, value: dailySalesLoadError ? null : rangeRevenue, format: 'peso', note: months.length ? `${months[0].label} ${months[0].year} to ${months[months.length - 1].label} ${months[months.length - 1].year}` : undefined },
+              { label: 'Trips', value: monthlyKpis.totalTrips, format: 'number', note: `Up to today, last ${monthlyRange} months${monthlyKpis.upcomingTrips > 0 ? `; ${monthlyKpis.upcomingTrips} more booked for later this month` : ''}` },
+              { label: 'Average per paid trip', value: dailySalesLoadError ? null : monthlyKpis.avgRevenuePerPaidTrip, format: 'peso', note: `Verified revenue ÷ ${monthlyKpis.paidTrips} paid ${monthlyKpis.paidTrips === 1 ? 'trip' : 'trips'}` },
             ],
           },
           {
             kind: 'table', title: 'Month-by-month', note: 'Newest month first',
-            columns: [{ header: 'Month', key: 'month', width: 16 }, { header: 'Trips', key: 'trips', format: 'number' }, { header: 'Revenue', key: 'revenue', format: 'peso', width: 18 }, { header: 'Avg per trip', key: 'average', format: 'peso', width: 18 }, { header: 'Revenue vs prior month', key: 'change', format: 'percent', width: 22 }],
+            columns: [{ header: 'Month', key: 'month', width: 16 }, { header: 'Trips', key: 'trips', format: 'number' }, { header: 'Revenue', key: 'revenue', format: 'peso', width: 18 }, { header: 'Paid trips', key: 'paid', format: 'number' }, { header: 'Avg per paid trip', key: 'average', format: 'peso', width: 20 }, { header: 'Revenue vs prior month', key: 'change', format: 'percent', width: 22 }],
             rows: months.map((month, index) => {
               const prior = index > 0 ? months[index - 1] : null;
               return {
                 month: `${month.label} ${month.year}`, trips: month.trips,
                 revenue: dailySalesLoadError ? null : month.revenue,
-                average: dailySalesLoadError ? null : month.trips > 0 ? month.revenue / month.trips : 0,
+                paid: dailySalesLoadError ? null : month.paidTrips,
+                average: dailySalesLoadError ? null : month.paidTrips > 0 ? month.revenue / month.paidTrips : 0,
                 change: dailySalesLoadError || !prior || prior.revenue <= 0 ? null : Number((((month.revenue - prior.revenue) / prior.revenue) * 100).toFixed(1)),
               };
             }).reverse(),
-            totals: { trips: rangeTrips, revenue: dailySalesLoadError ? null : rangeRevenue, average: dailySalesLoadError ? null : rangeTrips > 0 ? rangeRevenue / rangeTrips : 0, change: '' },
+            totals: { trips: rangeTrips, revenue: dailySalesLoadError ? null : rangeRevenue, paid: dailySalesLoadError ? null : monthlyKpis.paidTrips, average: dailySalesLoadError ? null : monthlyKpis.avgRevenuePerPaidTrip, change: '' },
           },
           {
             kind: 'table', title: 'Service type', note: 'Trips by service',
@@ -1369,57 +1217,60 @@ export default function Reports() {
       };
     }
 
-    // AI demand forecast
-    if (!forecast) {
-      toast.error('Generate a forecast before exporting it.');
+    // AI demand forecast: all four tabs in one document
+    if (!forecast?.demand) {
+      toast.error('Load a forecast before exporting it.');
       return null;
     }
-    const horizonDays = forecastHorizon === '7days' ? 7 : forecastHorizon === '90days' ? 90 : 30;
-    const hasHistory = forecast.accuracy.historicalBookingsUsed > 0;
-    const peak = forecast.expectedPeakDemand;
-    const isAvailable = (resource: { status?: string; isActive?: boolean; isAssigned?: boolean }) => resource.status?.toLowerCase() === 'available' && resource.isActive !== false && resource.isAssigned !== true;
-    const needed = (perBooking: number | null) => (peak && perBooking !== null ? Math.ceil(peak.bookings * perBooking) : null);
-    const capacity = [
-      { resource: 'Trucks', available: vehicles.filter(isAvailable).length, needed: needed(forecast.averageVehiclesPerBooking) },
-      { resource: 'Drivers', available: drivers.filter((driver) => isAvailable(driver as unknown as { status?: string })).length, needed: needed(forecast.averageDriversPerBooking) },
-      { resource: 'Helpers', available: helpers.filter(isAvailable).length, needed: needed(forecast.averageHelpersPerBooking) },
-    ].map((row) => ({ ...row, shortage: row.needed === null ? null : Math.max(0, row.needed - row.available) }));
-    const forecastDays = forecast.forecastData.slice(0, horizonDays);
+    const demand = forecast.demand;
+    const backtest = forecast.evaluation.backtest;
+    const plan = forecast.resources;
+    const insightSet = aiInsights?.status === 'ok' && aiInsights.insights ? aiInsights.insights : forecast.systemInsights;
+    const insightSource = aiInsights?.status === 'ok' && aiInsights.insights ? `AI-generated (${aiInsights.model}), figures checked against the forecast` : 'Rule-based, from the forecast data';
+    const periodLabel = horizonOptions().find((option) => option.id === forecastHorizon)?.label ?? forecastHorizon;
     return {
       ...base,
+      filters: [{ label: 'Service', value: 'All services' }, { label: 'Vehicle', value: 'All vehicles' }, { label: 'History used', value: `${formatForecastRange(forecast.dataQuality.trainingStart ?? forecastHistory.start, forecast.params.historyEnd)} (${forecast.dataQuality.trainingBookings} bookings)` }, { label: 'Method', value: forecast.method.label }],
       reportName: 'AI Demand Forecast',
       fileStem: 'ai-demand-forecast',
-      period: `Next ${horizonDays} days`,
+      period: `${periodLabel}: ${dateLabel(forecast.params.forecastStart)} to ${dateLabel(forecast.params.forecastEnd)}`,
+      landscape: true,
       sections: [
         {
-          kind: 'metrics', title: 'Forecast summary', items: [
-            { label: 'Predicted bookings', value: hasHistory ? forecast.predictedBookings : null, format: 'decimal', note: `Next ${horizonDays} days` },
-            { label: 'Average per day', value: hasHistory ? Number((forecast.predictedBookings / horizonDays).toFixed(1)) : null, format: 'decimal' },
-            { label: 'Busiest day', value: peak ? peak.bookings : null, format: 'decimal', note: peak ? `Bookings expected on ${dateLabel(peak.date, true)}` : undefined },
-            { label: 'Forecast confidence', value: forecast.confidence === null ? null : Math.round(forecast.confidence), format: 'percent' },
-            { label: 'Bookings used to learn from', value: forecast.accuracy.historicalBookingsUsed, format: 'number' },
-            { label: 'Average daily error', value: forecast.accuracy.mae, format: 'decimal', note: 'Bookings it usually misses by' },
-            { label: 'Average error %', value: forecast.accuracy.mape, format: 'percent' },
+          kind: 'metrics', title: 'Demand forecast', items: [
+            { label: 'Total forecasted bookings', value: demand.totalForecast, format: 'number' },
+            { label: 'Average per day', value: demand.dailyAverage, format: 'decimal' },
+            { label: `Change per day vs. previous ${demand.previousPeriod.days} days`, value: demand.previousPeriod.changePct === null ? null : Number(demand.previousPeriod.changePct.toFixed(1)), format: 'percent' },
+            { label: 'Expected demand', value: demand.demandLevel?.level ?? null },
+            { label: 'Peak demand period', value: demand.peakWeek ? `${dateLabel(demand.peakWeek.start)} - ${dateLabel(demand.peakWeek.end)}` : demand.peakPattern ? `${demand.peakPattern.weekday}s (${demand.peakPattern.bookings} each)` : null },
+            { label: 'Already booked in period', value: demand.alreadyBooked, format: 'number' },
+            { label: 'Backtest MAE (bookings/day)', value: backtest.available ? Number((backtest.mae ?? 0).toFixed(2)) : null, format: 'decimal', note: backtest.available ? `${backtest.testDays} test days` : backtest.reason },
+            { label: 'Backtest MAPE', value: backtest.mape === null ? null : Number(backtest.mape.toFixed(1)), format: 'percent' },
           ],
         },
-        ...(forecast.summaryText ? [{ kind: 'list' as const, title: 'Summary', items: [forecast.summaryText] }] : []),
-        { kind: 'list', title: 'AI recommendations', items: forecast.recommendations, emptyText: 'No recommendations for this forecast.' },
+        { kind: 'list', title: 'Forecast summary', items: [demand.summary] },
         {
-          kind: 'table', title: 'Capacity on the busiest day', note: peak ? `Available now vs. needed on ${dateLabel(peak.date)}` : 'Available now vs. needed on the busiest day',
-          columns: [{ header: 'Resource', key: 'resource', width: 16 }, { header: 'Available now', key: 'available', format: 'number' }, { header: 'Needed', key: 'needed', format: 'number' }, { header: 'Shortage', key: 'shortage', format: 'number' }],
-          rows: capacity,
+          kind: 'table', title: 'Service demand', note: 'Bookings mapped to the four service types; unmapped bookings listed separately',
+          columns: [{ header: 'Service', key: 'service', width: 26 }, { header: 'History', key: 'historical', format: 'number' }, { header: 'Forecast', key: 'forecast', format: 'decimal' }, { header: 'Share', key: 'share', format: 'percent' }, { header: 'Trend', key: 'trend', width: 14 }],
+          rows: [
+            ...forecast.services.rows.map((row) => ({ service: row.service, historical: row.historical, forecast: row.forecast, share: Number(row.forecastSharePct.toFixed(1)), trend: row.trend })),
+            { service: 'No service type recorded', historical: forecast.services.unclassified.historical, forecast: forecast.services.unclassified.forecast, share: null, trend: '' },
+          ],
         },
+        plan.status === 'ok' ? {
+          kind: 'table' as const, title: 'Resource planning (estimates)', note: plan.availabilityError ?? 'Busiest-day requirement vs. available resources',
+          columns: [{ header: 'Resource', key: 'resource', width: 14 }, { header: 'Needed (busiest day)', key: 'needed', format: 'number' as const }, { header: 'Busiest day', key: 'day', width: 18 }, { header: 'Available', key: 'available', format: 'number' as const }, { header: 'Shortage', key: 'shortage', format: 'number' as const }],
+          rows: plan.resources.map((r) => ({ resource: r.label, needed: r.peakRequired, day: dateLabel(r.peakDate), available: plan.availabilityError ? null : r.usableOnPeak, shortage: plan.availabilityError ? null : r.shortage })),
+        } : { kind: 'list' as const, title: 'Resource planning', items: [plan.message ?? 'Resource requirements are unavailable.'] },
+        { kind: 'list', title: 'Resource preparation', items: plan.recommendations.map((item) => item.text), emptyText: 'No preparation needed.' },
+        { kind: 'list', title: `Key insights - ${insightSource}`, items: insightSet.keyInsights.map((item) => `${item.title}: ${item.detail}`), emptyText: 'No insights.' },
+        { kind: 'list', title: 'Recommended actions', items: insightSet.recommendedActions.map((item) => `[${item.priority}] ${item.action} ${item.reason}`), emptyText: 'No actions.' },
+        { kind: 'list', title: 'Potential risks', items: insightSet.risks.map((item) => `[${item.severity}] ${item.risk}: ${item.detail}`), emptyText: 'No significant risks.' },
         {
-          kind: 'table', title: 'Demand by service', note: `Expected bookings, next ${horizonDays} days`,
-          columns: [{ header: 'Service', key: 'service', width: 26 }, { header: 'Past bookings', key: 'historical', format: 'number' }, { header: 'Expected bookings', key: 'forecast', format: 'decimal', width: 20 }],
-          rows: forecast.serviceDemand.map((item) => ({ service: item.service, historical: item.historical, forecast: item.forecast })),
-          totals: { historical: forecast.serviceDemand.reduce((sum, item) => sum + item.historical, 0), forecast: Number(forecast.serviceDemand.reduce((sum, item) => sum + item.forecast, 0).toFixed(1)) },
-        },
-        {
-          kind: 'table', title: 'Daily forecast', note: 'Expected bookings for each day',
-          columns: [{ header: 'Date', key: 'date', width: 22 }, { header: 'Expected bookings', key: 'forecast', format: 'decimal', width: 20 }],
-          rows: forecastDays.map((point) => ({ date: point.date ? dateLabel(point.date, true) : point.label, forecast: point.forecast })),
-          totals: { forecast: Number(forecastDays.reduce((sum, point) => sum + point.forecast, 0).toFixed(1)) },
+          kind: 'table', title: 'Daily forecast', note: 'Expected bookings per day (never below bookings already on the calendar)',
+          columns: [{ header: 'Date', key: 'date', width: 22 }, { header: 'Forecast', key: 'forecast', format: 'decimal' }, { header: 'Already booked', key: 'booked', format: 'number' }],
+          rows: demand.daily.map((day) => ({ date: dateLabel(day.date, true), forecast: day.forecast, booked: day.alreadyBooked })),
+          totals: { forecast: demand.totalForecast, booked: demand.alreadyBooked },
         },
       ],
     };
@@ -1464,6 +1315,22 @@ export default function Reports() {
     setSelectedVehicleId('All');
   };
 
+  // Save and Export sit in the filter row (pill style, aligned with the filters); the
+  // forecast tab has no filter row, so there they sit in the AI Demand Forecasting header card.
+  const reportActions = (
+    <div className="flex flex-wrap items-center gap-3">
+      <button
+        type="button"
+        onClick={saveCurrentReport}
+        disabled={savingReport || (reportType === 'forecast' && !forecast)}
+        className={`${FILTER_CHIP_CLASSES} gap-2.5 whitespace-nowrap font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1a1f6e]/15 disabled:cursor-not-allowed disabled:opacity-50`}
+      >
+        <Save size={18} aria-hidden="true" /> {savingReport ? 'Saving...' : 'Save report'}
+      </button>
+      <ExportMenu variant="primary" options={[{ label: 'PDF', icon: FileText, onSelect: () => { void exportPDF(); } }, { label: 'Excel', icon: FileSpreadsheet, onSelect: () => { void exportExcel(); } }]} />
+    </div>
+  );
+
   return (
     <div className="space-y-6" ref={reportRef}>
       <PageHeader
@@ -1471,26 +1338,47 @@ export default function Reports() {
         title="REPORTS"
         subtitle={<>Analyze bookings, revenue, operational performance, and <span className="font-medium text-[#d4a72c]">AI demand forecasts</span>.</>}
         subtitleClassName="mt-1 text-sm text-slate-500"
-        action={<div className="flex flex-wrap items-center gap-2">
-          <button
-            onClick={saveCurrentReport}
-            disabled={savingReport || (reportType === 'forecast' && !forecast)}
-            className="inline-flex h-10 w-fit shrink-0 items-center gap-2 whitespace-nowrap rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0b0f4a]/30 disabled:opacity-50"
-          >
-            <Save size={16} aria-hidden="true" /> {savingReport ? 'Saving...' : 'Save report'}
-          </button>
-          <details className="group relative">
-            <summary className="inline-flex h-10 w-fit shrink-0 cursor-pointer list-none items-center gap-2 whitespace-nowrap rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0b0f4a]/30">
-              <Download size={16} aria-hidden="true" /> Export <ChevronDown size={15} aria-hidden="true" />
-            </summary>
-            <div className="absolute right-0 z-30 mt-2 min-w-36 overflow-hidden rounded-xl border border-slate-200/70 bg-white p-1 shadow-md">
-              <button type="button" onClick={exportPDF} className="inline-flex h-10 w-full items-center gap-2 whitespace-nowrap rounded-lg px-3 text-left text-sm text-slate-700 transition-colors hover:bg-[#e0ac22] hover:text-[#172033] focus-visible:bg-[#e0ac22] focus-visible:text-[#172033] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0b0f4a]/30"><FileText size={15} aria-hidden="true" /> PDF</button>
-              <button type="button" onClick={exportExcel} className="inline-flex h-10 w-full items-center gap-2 whitespace-nowrap rounded-lg px-3 text-left text-sm text-slate-700 transition-colors hover:bg-[#e0ac22] hover:text-[#172033] focus-visible:bg-[#e0ac22] focus-visible:text-[#172033] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0b0f4a]/30"><FileSpreadsheet size={15} aria-hidden="true" /> Excel</button>
-            </div>
-          </details>
-        </div>}
       />
 
+      {/* Filters: the date control matches what the open tab actually uses. The forecast tab has none. */}
+      {activeSection !== 'forecast' && (
+      <div role="group" aria-label="Report filters" className="flex flex-wrap items-center gap-3 rounded-2xl border border-slate-200/70 bg-white p-3 shadow-sm">
+        {activeSection === 'daily' ? (
+          <ReadOnlyFilter label="Report date">Today - {formatFilterDate(getManilaDateInputValue(), true)}</ReadOnlyFilter>
+        ) : activeSection === 'monthly' ? (
+          <ReadOnlyFilter label="Period, set with 6M, 12M or 24M below">{formatFilterMonth(dateFrom)} to {formatFilterMonth(dateTo)}</ReadOnlyFilter>
+        ) : (
+          <>
+            <span id="reports-date-range-label" className="sr-only">Date range</span>
+            <DateRangeField id="reports-date-range" start={dateFrom} end={dateTo} onChangeStart={setDateFrom} onChangeEnd={setDateTo} presets={RANGE_PRESETS.map((preset) => ({ ...preset, range: getPresetRange(preset.id) }))} />
+          </>
+        )}
+        <label htmlFor="reports-service" className="sr-only">Services</label>
+        <ReportSelect
+          id="reports-service"
+          icon={Package}
+          value={selectedService}
+          onChange={setSelectedService}
+          options={[{ value: 'All', label: 'All services' }, ...REPORT_SERVICES.map((service) => ({ value: service, label: service }))]}
+        />
+        <label htmlFor="reports-vehicle" className="sr-only">Vehicle</label>
+        <ReportSelect
+          id="reports-vehicle"
+          icon={Truck}
+          value={selectedVehicleId}
+          onChange={setSelectedVehicleId}
+          options={[{ value: 'All', label: 'All vehicles' }, ...vehicles.map((vehicle) => ({ value: vehicle.id, label: vehicle.plateNumber || vehicle.alias || vehicle.model || 'Vehicle' }))]}
+        />
+        {appliedFilterCount > 0 && (
+          <button type="button" onClick={resetFilters} title="Clear filters and go back to the default date range" className={`${FILTER_CHIP_CLASSES} shrink-0 gap-2 whitespace-nowrap border-dashed bg-slate-50 text-slate-600 hover:border-slate-400 hover:text-[#0b0f4a] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1a1f6e]/15`}>
+            <RotateCcw size={17} aria-hidden="true" /> Reset
+          </button>
+        )}
+        <div className="ml-auto">{reportActions}</div>
+      </div>
+      )}
+
+      <div className="flex flex-wrap items-center gap-3">
       <nav aria-label="Report sections" className="flex w-fit max-w-full flex-wrap items-center gap-2 rounded-2xl border border-slate-200/70 bg-slate-50 p-2">
         {([
           { id: 'daily', label: 'Daily Report' },
@@ -1514,79 +1402,30 @@ export default function Reports() {
           </button>
         ))}
       </nav>
-
-      {/* Filters: the date control matches what the open tab actually uses */}
-      <div className="rounded-2xl border border-slate-200/70 bg-white p-6 shadow-sm transition hover:shadow-md">
-        <div className="flex flex-wrap items-end gap-3 lg:flex-nowrap">
-          <div className="min-w-[200px] flex-[1.6] lg:min-w-0">
-            {activeSection === 'daily' ? <>
-              <p className="mb-1.5 block text-sm font-medium text-slate-900">Report date</p>
-              <ReadOnlyFilter>Today · {formatFilterDate(getManilaDateInputValue(), true)}</ReadOnlyFilter>
-            </> : activeSection === 'monthly' ? <>
-              <p className="mb-1.5 block text-sm font-medium text-slate-900">Period</p>
-              <ReadOnlyFilter>{formatFilterMonth(dateFrom)} to {formatFilterMonth(dateTo)} · set with 6M, 12M or 24M below</ReadOnlyFilter>
-            </> : <>
-              <label id="reports-date-range-label" htmlFor="reports-date-range" className="mb-1.5 block text-sm font-medium text-slate-900">{activeSection === 'forecast' ? 'Booking history to learn from' : 'Date range'}</label>
-              <DateRangeField id="reports-date-range" start={dateFrom} end={dateTo} onChangeStart={setDateFrom} onChangeEnd={setDateTo} presets={RANGE_PRESETS.map((preset) => ({ ...preset, range: getPresetRange(preset.id) }))} />
-            </>}
-          </div>
-          <div className="min-w-[140px] flex-1 lg:min-w-0">
-            <label htmlFor="reports-service" className="mb-1.5 block text-sm font-medium text-slate-900">Services</label>
-            <ReportSelect
-              id="reports-service"
-              value={selectedService}
-              onChange={setSelectedService}
-              options={[{ value: 'All', label: 'All' }, ...REPORT_SERVICES.map((service) => ({ value: service, label: service }))]}
-            />
-          </div>
-          <div className="min-w-[140px] flex-1 lg:min-w-0">
-            <label htmlFor="reports-vehicle" className="mb-1.5 block text-sm font-medium text-slate-900">Vehicle</label>
-            <ReportSelect
-              id="reports-vehicle"
-              value={selectedVehicleId}
-              onChange={setSelectedVehicleId}
-              options={[{ value: 'All', label: 'All' }, ...vehicles.map((vehicle) => ({ value: vehicle.id, label: vehicle.plateNumber || vehicle.alias || vehicle.model || 'Vehicle' }))]}
-            />
-          </div>
-          {appliedFilterCount > 0 && (
-            <div className="ml-auto flex shrink-0 items-center gap-2">
-              <button type="button" onClick={resetFilters} className="inline-flex h-10 w-fit shrink-0 items-center gap-2 whitespace-nowrap px-3 text-sm font-medium text-slate-500 underline-offset-2 hover:text-slate-800 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0b0f4a]/30">Reset</button>
-            </div>
-          )}
-        </div>
       </div>
 
       {activeSection === 'daily' ? (
         <DailyReportLayout
           dailyKpis={dailyKpis}
-          dailyBookingSummary={dailyBookingSummary}
           paymentTracking={paymentTracking}
           dailySalesLoadError={dailySalesLoadError}
           bookingLoadError={bookingLoadError}
-          dateTo={getManilaDateInputValue()}
-          recentBookings={recentBookings}
-          dailyChartDays={dailyChartDays}
-          onDailyChartDaysChange={setDailyChartDays}
+          vehicleLoadError={vehicleLoadError}
+          crewLoadError={crewLoadError}
+          reportDate={getManilaDateInputValue()}
+          todayBookings={todayBookings}
+          salesByService={salesByService}
+          jobsByHour={jobsByHour}
+          freeTrucks={freeTrucks}
+          freeHelpers={freeHelpers}
         />
       ) : activeSection === 'operational' ? (
-        <OperationalReportLayout
-          fleetUtilization={operationalFleetUtilization}
-          jobsPerVehicle={fleetUtilization}
-          onTimeArrival={onTimeArrival}
-          activeJobOrders={activeJobOrders}
-          crewOnDuty={crewOnDuty}
-          crewSummary={crewSummary}
-          crewTotals={{ drivers: drivers.length, helpers: helpers.length }}
-          bookingLoadError={bookingLoadError}
-          assignmentLoadError={assignmentLoadError}
-          jobOrderLoadError={jobOrderLoadError}
-          postServiceLoadError={postServiceLoadError}
-          crewLoadError={crewLoadError}
-          vehicleLoadError={vehicleLoadError}
-          completedVsCancelled={completedVsCancelled}
-          vehicleStatus={vehicleStatus}
-          dateFrom={dateFrom}
-          dateTo={dateTo}
+        <OperationalReport
+          from={dateFrom}
+          to={dateTo}
+          service={selectedService}
+          vehicleId={selectedVehicleId}
+          onDataChange={handleOperationalData}
         />
       ) : (
         <>
@@ -1594,35 +1433,32 @@ export default function Reports() {
             forecast={forecast}
             loading={forecastLoading}
             error={forecastError}
-            onGenerate={() => { void loadForecast(); }}
+            onRefresh={() => { void loadForecast(); }}
             horizon={forecastHorizon}
             onHorizonChange={setForecastHorizon}
-            vehicles={vehicles}
-            drivers={drivers}
-            helpers={helpers}
-          /> : <MonthlyReportLayout
-            monthlyKpis={monthlyKpis}
+            ai={aiInsights}
+            aiLoading={aiLoading}
+            aiError={aiError}
+            onLoadAi={loadAiInsightsCallback}
+            actions={reportActions}
+          /> : <MonthlyReport
+            months={monthlyData.months}
+            today={getManilaDateInputValue()}
             salesUnavailable={dailySalesLoadError}
-            monthlyData={monthlyData}
-            monthlyServiceDistribution={monthlyServiceDistribution}
-            monthlyPaymentDistribution={monthlyPaymentDistribution}
-            monthlyStatusDistribution={monthlyStatusDistribution}
-            monthlyRange={monthlyRange}
-            onMonthlyRangeChange={(range) => {
+            totalTrips={monthlyKpis.totalTrips}
+            upcomingTrips={monthlyKpis.upcomingTrips}
+            paidTrips={monthlyKpis.paidTrips}
+            avgRevenuePerPaidTrip={monthlyKpis.avgRevenuePerPaidTrip}
+            serviceDistribution={monthlyServiceDistribution}
+            paymentDistribution={monthlyPaymentDistribution}
+            statusDistribution={monthlyStatusDistribution}
+            range={monthlyRange}
+            onRangeChange={(range) => {
               setMonthlyRange(range);
-              if (dateTo) {
-                const end = new Date(`${dateTo}T00:00:00`);
-                if (!Number.isNaN(end.getTime())) {
-                  setDateFrom(toDateInputValue(new Date(end.getFullYear(), end.getMonth() - range + 1, 1)));
-                }
-              }
+              const window = monthlyWindow(range, getManilaDateInputValue());
+              setDateFrom(window.start);
+              setDateTo(window.end);
             }}
-            forecast={forecast}
-            forecastLoading={forecastLoading}
-            forecastError={forecastError}
-            forecastChartData={forecastChartData}
-            recommendedResources={recommendedResources}
-            historicalBookingCount={filteredBookings.length}
           />
           }
         </>
@@ -1630,440 +1466,15 @@ export default function Reports() {
     </div>
   );
 }
-function MonthlyReportLayout({
-  monthlyKpis,
-  salesUnavailable,
-  monthlyData,
-  monthlyServiceDistribution,
-  monthlyPaymentDistribution,
-  monthlyStatusDistribution,
-  monthlyRange,
-  onMonthlyRangeChange,
-  forecast,
-  forecastLoading,
-  forecastError,
-  forecastChartData,
-  recommendedResources,
-  historicalBookingCount,
-  forecastOnly = false,
-}: {
-  monthlyKpis: {
-    monthlyRevenue: number;
-    monthlyRevenueChange: number;
-    ytdRevenue: number;
-    totalTrips: number;
-    avgRevenuePerTrip: number;
-    avgChange: number;
-  };
-  salesUnavailable: boolean;
-  monthlyData: {
-    months: { label: string; year: number; month: number; revenue: number; trips: number }[];
-    latestMonth: { label: string; year: number; revenue: number; trips: number } | null;
-    previousMonth: { label: string; year: number; revenue: number; trips: number } | null;
-  };
-  monthlyServiceDistribution: { name: string; value: number }[];
-  monthlyPaymentDistribution: { name: string; value: number }[];
-  monthlyStatusDistribution: { name: string; value: number }[];
-  monthlyRange: 6 | 12 | 24;
-  onMonthlyRangeChange: (range: 6 | 12 | 24) => void;
-  forecast: ForecastResponse | null;
-  forecastLoading: boolean;
-  forecastError: string | null;
-  forecastChartData: { label: string; forecast: number }[];
-  recommendedResources: { trucks: number; drivers: number; helpers: number };
-  historicalBookingCount: number;
-  forecastOnly?: boolean;
-}) {
-  const statusColors: Record<string, string> = {
-    'For Plotting': '#f59e0b',
-    'For Verification': '#3b82f6',
-    Assigned: '#6366f1',
-    Rescheduled: '#06b6d4',
-    Completed: '#10b981',
-    Cancelled: '#ef4444',
-  };
-
-  const serviceColors: Record<string, string> = {
-    'Lipat Bahay': '#22c55e',
-    'Office Pull Out': '#3b82f6',
-    'Corporate Delivery': '#f59e0b',
-    'Unit to Unit Transfer': '#a855f7',
-    'Warehouse Move': '#ef4444',
-  };
-
-  const paymentColors: Record<string, string> = {
-    GCash: '#3b82f6',
-    BDO: '#22c55e',
-    Xendit: '#8b5cf6',
-    'Bank Transfer': '#22c55e',
-    COD: '#f59e0b',
-    'Credit Card': '#ef4444',
-    Cash: '#64748b',
-  };
-
-  const latestLabel = monthlyData.latestMonth ? `${monthlyData.latestMonth.label} ${monthlyData.latestMonth.year}` : '';
-  const previousAverage = monthlyData.previousMonth && monthlyData.previousMonth.trips > 0 ? monthlyData.previousMonth.revenue / monthlyData.previousMonth.trips : 0;
-  const muted = (isZero: boolean) => (isZero ? 'text-slate-400' : undefined);
-  /** "▲ 12.3% vs Sep", coloured, or a plain note when there is no earlier month to compare with. */
-  const changeNote = (change: number, previousValue: number | undefined) => {
-    if (!monthlyData.previousMonth || !previousValue) return 'No previous month to compare';
-    return <><span className={change >= 0 ? 'font-semibold text-emerald-600' : 'font-semibold text-red-600'}>{change >= 0 ? '▲' : '▼'} {Math.abs(change).toFixed(1)}%</span> vs {monthlyData.previousMonth.label}</>;
-  };
-  const [monthPage, setMonthPage] = useState(1);
-  const [monthPageSize, setMonthPageSize] = useState(8);
-  const monthRows = monthlyData.months.map((month, index) => {
-    const previous = index > 0 ? monthlyData.months[index - 1] : null;
-    return {
-      key: `${month.year}-${month.month}`,
-      label: `${month.label} ${month.year}`,
-      trips: month.trips,
-      revenue: month.revenue,
-      average: month.trips > 0 ? month.revenue / month.trips : 0,
-      change: previous && previous.revenue > 0 ? ((month.revenue - previous.revenue) / previous.revenue) * 100 : null,
-    };
-  }).reverse();
-  // Same pagination as the other tables; the Total row still covers every month in the range.
-  const monthTotalPages = Math.max(1, Math.ceil(monthRows.length / monthPageSize));
-  const safeMonthPage = Math.min(monthPage, monthTotalPages);
-  const pagedMonthRows = monthRows.slice((safeMonthPage - 1) * monthPageSize, safeMonthPage * monthPageSize);
-  const rangeTrips = monthlyData.months.reduce((sum, month) => sum + month.trips, 0);
-  const rangeRevenue = monthlyData.months.reduce((sum, month) => sum + month.revenue, 0);
-  const hasLimitedForecastData = historicalBookingCount < FORECAST_LIMITED_DATA_THRESHOLD;
-  const hasForecastHistory = historicalBookingCount > 0;
-  const forecastChange = forecast && hasForecastHistory ? Math.round(forecast.predictedBookings * 0.18) : 0;
-  const forecastConfidence = Math.max(0, Math.min(100, forecast?.confidence ?? 0));
-  const confidenceLevel = forecastConfidence < FORECAST_CONFIDENCE_LOW_THRESHOLD
-    ? { label: 'Low', classes: 'bg-amber-50 text-amber-700' }
-    : forecastConfidence <= FORECAST_CONFIDENCE_HIGH_THRESHOLD
-      ? { label: 'Medium', classes: 'bg-blue-50 text-blue-700' }
-      : { label: 'High', classes: 'bg-emerald-50 text-emerald-700' };
-
-  return (
-    <div className="space-y-6">
-      {!forecastOnly && <>
-      {/* Monthly performance: one range control for the whole tab */}
-      <section aria-labelledby="monthly-kpi-heading" className="space-y-3">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h3 id="monthly-kpi-heading" className="text-sm font-semibold text-slate-900">Monthly performance</h3>
-          </div>
-          <MonthlyRangeSelector value={monthlyRange} onChange={onMonthlyRangeChange} />
-        </div>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <KPICard
-            variant="dashboard-compact"
-            label={`Revenue${latestLabel ? `, ${latestLabel}` : ''}`}
-            value={salesUnavailable ? 'Unavailable' : formatPesoCompact(monthlyKpis.monthlyRevenue)}
-            description={salesUnavailable ? 'Verified sales data unavailable' : changeNote(monthlyKpis.monthlyRevenueChange, monthlyData.previousMonth?.revenue)}
-            icon={PhilippinePeso}
-            iconColor="#059669"
-            valueClassName={muted(salesUnavailable || monthlyKpis.monthlyRevenue === 0)}
-          />
-          <KPICard
-            variant="dashboard-compact"
-            label="Year-to-date revenue"
-            value={salesUnavailable ? 'Unavailable' : formatPesoCompact(monthlyKpis.ytdRevenue)}
-            description={salesUnavailable ? 'Verified sales data unavailable' : `Jan to ${latestLabel || 'date'}`}
-            icon={BarChart3}
-            iconColor="#3b82f6"
-            valueClassName={muted(salesUnavailable || monthlyKpis.ytdRevenue === 0)}
-          />
-          <KPICard
-            variant="dashboard-compact"
-            label="Trips"
-            value={String(monthlyKpis.totalTrips)}
-            description={`Non-cancelled, last ${monthlyRange} months`}
-            icon={Truck}
-            iconColor="#a855f7"
-            valueClassName={muted(monthlyKpis.totalTrips === 0)}
-          />
-          <KPICard
-            variant="dashboard-compact"
-            label="Average revenue per trip"
-            value={salesUnavailable ? 'Unavailable' : formatPesoCompact(monthlyKpis.avgRevenuePerTrip)}
-            description={salesUnavailable ? 'Verified sales data unavailable' : monthlyKpis.totalTrips === 0 ? 'No trips yet' : changeNote(monthlyKpis.avgChange, previousAverage)}
-            icon={TrendingUp}
-            iconColor="#f59e0b"
-            valueClassName={muted(salesUnavailable || monthlyKpis.avgRevenuePerTrip === 0)}
-          />
-        </div>
-      </section>
-
-      {/* Monthly trends */}
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-        <ChartCard title="Revenue trend" subtitle="Verified revenue per month (₱)" className="min-w-0">
-          {salesUnavailable ? (
-            <div className="flex h-[250px] flex-col items-center justify-center text-center text-slate-400" role="status">
-              <TrendingUp size={28} className="mb-3 text-slate-300" aria-hidden="true" />
-              <p className="text-sm font-semibold text-slate-500">Verified sales data is unavailable.</p>
-            </div>
-          ) : monthlyData.months.length === 0 ? (
-            <div className="flex h-[250px] flex-col items-center justify-center text-center text-slate-400">
-              <TrendingUp size={28} className="mb-3 text-slate-300" aria-hidden="true" />
-              <p className="text-sm font-semibold text-slate-500">No revenue data in the selected range.</p>
-            </div>
-          ) : (
-            <div role="img" aria-label="Monthly revenue trend chart" className="min-w-0">
-              <ResponsiveContainer width="100%" height={250}>
-                <LineChart data={monthlyData.months.map((m) => ({ label: monthlyRange === 24 ? `${m.label} '${String(m.year).slice(-2)}` : m.label, revenue: m.revenue }))} margin={{ top: 18, right: 14, left: 4, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
-                  <XAxis dataKey="label" tick={{ fontSize: 12, fill: '#64748b' }} tickMargin={8} tickLine={false} />
-                  <YAxis width={70} tick={{ fontSize: 12, fill: '#64748b' }} tickFormatter={(v: number) => formatPesoCompact(v)} />
-                  <Tooltip formatter={(value: number) => [formatPeso(value), 'Revenue']} contentStyle={{ borderRadius: '0.75rem', border: '1px solid #e2e8f0', fontSize: 12, color: '#334155', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
-                  <Line type="monotone" dataKey="revenue" name="Revenue" stroke="#1a1f6e" strokeWidth={2.5} dot={{ r: 3, fill: '#1a1f6e' }} activeDot={{ r: 5 }}>
-                    {monthlyRange <= 12 && <LabelList dataKey="revenue" position="top" fontSize={11} fill="#1a1f6e" formatter={(v: number) => formatPesoCompact(v)} />}
-                  </Line>
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-          )}
-        </ChartCard>
-
-        <ChartCard title="Trips per month" subtitle="Non-cancelled bookings by service date" className="min-w-0">
-          {monthlyData.months.length === 0 ? (
-            <div className="flex h-[250px] flex-col items-center justify-center text-center text-slate-400">
-              <BarChart3 size={28} className="mb-3 text-slate-300" aria-hidden="true" />
-              <p className="text-sm font-semibold text-slate-500">No trip data in the selected range.</p>
-            </div>
-          ) : (
-            <div role="img" aria-label="Trips per month chart" className="min-w-0">
-              <ResponsiveContainer width="100%" height={250}>
-                <BarChart data={monthlyData.months.map((m) => ({ label: monthlyRange === 24 ? `${m.label} '${String(m.year).slice(-2)}` : m.label, trips: m.trips }))} margin={{ top: 18, right: 12, left: 0, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
-                  <XAxis dataKey="label" tick={{ fontSize: 12, fill: '#64748b' }} tickMargin={8} tickLine={false} />
-                  <YAxis width={34} tick={{ fontSize: 12, fill: '#64748b' }} allowDecimals={false} />
-                  <Tooltip cursor={{ fill: '#f1f4fa' }} formatter={(value: number) => [value, 'Trips']} contentStyle={{ borderRadius: '0.75rem', border: '1px solid #e2e8f0', fontSize: 12, color: '#334155', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
-                  <Bar dataKey="trips" name="Trips" fill="#1a1f6e" radius={[4, 4, 0, 0]} maxBarSize={30}>
-                    {monthlyRange <= 12 && <LabelList dataKey="trips" position="top" fontSize={11} fill="#1a1f6e" />}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          )}
-        </ChartCard>
-      </div>
-
-      {/* Distribution cards */}
-      <div className="grid grid-cols-1 items-stretch gap-4 lg:grid-cols-3">
-        <ChartCard title="Service type" subtitle="Trips by service" className="min-w-0 overflow-hidden">
-          <DistributionDonut
-            data={monthlyServiceDistribution}
-            colors={serviceColors}
-            fallbackColor="#3b82f6"
-            centerLabel={`${monthlyKpis.totalTrips}`}
-            centerSubLabel="trips"
-            emptyTitle="No service data yet"
-            emptyHint="Bookings will appear here."
-            horizontal
-            large
-          />
-        </ChartCard>
-
-        <ChartCard title="Payment method" subtitle="Verified collections by method" className="min-w-0 overflow-hidden">
-          <DistributionDonut
-            data={salesUnavailable ? [] : monthlyPaymentDistribution}
-            colors={paymentColors}
-            fallbackColor="#3b82f6"
-            centerLabel={formatPesoCompact(monthlyPaymentDistribution.reduce((sum, item) => sum + item.value, 0))}
-            centerSubLabel="total collected"
-            valueFormatter={(v: number) => formatPesoCompact(v)}
-            emptyTitle={salesUnavailable ? 'Payment data unavailable' : 'No payment data yet'}
-            emptyHint={salesUnavailable ? 'Unable to load verified sales.' : 'Payments will appear here.'}
-            horizontal
-            large
-          />
-        </ChartCard>
-
-        <ChartCard title="Booking status" subtitle="All bookings, including cancelled" className="min-w-0 overflow-hidden">
-          <DistributionDonut
-            data={monthlyStatusDistribution}
-            colors={statusColors}
-            fallbackColor="#3b82f6"
-            centerLabel={`${monthlyStatusDistribution.reduce((sum, item) => sum + item.value, 0)}`}
-            centerSubLabel="bookings"
-            showCounts
-            emptyTitle="No booking status data yet"
-            emptyHint="Booking status counts will show here."
-            horizontal
-            large
-          />
-        </ChartCard>
-      </div>
-
-      {/* Exact figures per month, newest first */}
-      <section className="overflow-hidden rounded-2xl border border-slate-200/70 bg-white shadow-sm">
-        <div className="border-b border-slate-200 px-5 py-4">
-          <h3 className="text-base font-semibold text-slate-900">Month-by-month</h3>
-          <p className="mt-0.5 text-sm text-slate-500">Exact trips and revenue for each month in the range</p>
-        </div>
-        <div className="overflow-x-auto">
-          <table className={`${tableClasses} min-w-[640px] table-auto`}>
-            <thead className={tableHeadClasses}>
-              <tr>{['Month', 'Trips', 'Revenue', 'Avg per trip', 'Revenue vs prior month'].map((heading) => <th key={heading} scope="col" className={`${tableHeaderCellClasses} whitespace-nowrap ${heading === 'Month' ? '' : 'text-right'}`}>{heading}</th>)}</tr>
-            </thead>
-            <tbody>
-              {monthRows.length === 0 ? (
-                <tr><td colSpan={5} className="border-b border-[#dde4ef] px-4 py-8 text-center text-sm text-[#70747c]">No months in the selected range.</td></tr>
-              ) : pagedMonthRows.map((row) => (
-                <tr key={row.key} className={tableRowClasses}>
-                  <td className={`${tableCellClasses} whitespace-nowrap font-semibold`}>{row.label}</td>
-                  <td className={`${tableCellClasses} text-right tabular-nums ${row.trips === 0 ? 'text-slate-400' : ''}`}>{row.trips}</td>
-                  <td className={`${tableCellClasses} whitespace-nowrap text-right tabular-nums ${row.revenue === 0 ? 'text-slate-400' : ''}`}>{salesUnavailable ? '—' : formatPeso(row.revenue)}</td>
-                  <td className={`${tableCellClasses} whitespace-nowrap text-right tabular-nums ${row.average === 0 ? 'text-slate-400' : ''}`}>{salesUnavailable ? '—' : formatPeso(row.average)}</td>
-                  <td className={`${tableCellClasses} whitespace-nowrap text-right tabular-nums`}>{salesUnavailable || row.change === null ? <span className="text-slate-400">—</span> : <span className={row.change >= 0 ? 'text-emerald-600' : 'text-red-600'}>{row.change >= 0 ? '▲' : '▼'} {Math.abs(row.change).toFixed(1)}%</span>}</td>
-                </tr>
-              ))}
-            </tbody>
-            {monthRows.length > 0 && (
-              <tfoot>
-                <tr className="bg-slate-50">
-                  <td className={`${tableCellClasses} font-semibold`}>Total</td>
-                  <td className={`${tableCellClasses} text-right font-semibold tabular-nums`}>{rangeTrips}</td>
-                  <td className={`${tableCellClasses} whitespace-nowrap text-right font-semibold tabular-nums text-[#1a1f6e]`}>{salesUnavailable ? '—' : formatPeso(rangeRevenue)}</td>
-                  <td className={`${tableCellClasses} whitespace-nowrap text-right font-semibold tabular-nums`}>{salesUnavailable ? '—' : formatPeso(rangeTrips > 0 ? rangeRevenue / rangeTrips : 0)}</td>
-                  <td className={tableCellClasses} />
-                </tr>
-              </tfoot>
-            )}
-          </table>
-        </div>
-        <TablePagination
-          page={safeMonthPage}
-          totalPages={monthTotalPages}
-          totalItems={monthRows.length}
-          pageSize={monthPageSize}
-          onPageChange={setMonthPage}
-          onPageSizeChange={(size) => { setMonthPageSize(size); setMonthPage(1); }}
-        />
-      </section>
-
-      </>}
-
-      {forecastOnly && <>
-      {/* AI Demand Forecast Section */}
-      <div id="ai-demand-forecast-section" className="scroll-mt-6 rounded-2xl border border-slate-200/70 bg-white p-6 shadow-sm transition hover:shadow-md">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-1">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <h3 className="flex items-center gap-2 text-lg font-bold text-slate-900"><Sparkles size={17} className="text-violet-500" aria-hidden="true" /> AI demand forecast</h3>
-              {hasLimitedForecastData && <span className="rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700">Limited data</span>}
-            </div>
-            <p className="text-sm text-slate-500 mt-0.5">Forecasted booking demand for next month</p>
-            <div className="mt-4">
-              <p className={`text-3xl font-bold ${forecastChange === 0 ? 'text-slate-400' : 'text-[#8b5cf6]'}`}>{forecastChange === 0 ? 'No change' : `+${forecastChange}%`}</p>
-              <p className="text-sm text-slate-500 mt-1">vs {monthlyData.latestMonth?.label || 'current month'} {monthlyData.latestMonth?.year || ''}</p>
-            </div>
-            <div className="mt-4">
-              {hasForecastHistory && forecast && forecastChartData.length > 0 ? (
-                <div className="h-40" role="img" aria-label="AI demand forecast trend for the next four weeks">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={forecastChartData}>
-                    <defs>
-                      <linearGradient id="monthlyForecastGradient" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.2} />
-                        <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0} />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
-                    <XAxis dataKey="label" tick={{ fontSize: 12, fill: '#64748b' }} />
-                    <YAxis tick={{ fontSize: 12, fill: '#64748b' }} allowDecimals={false} />
-                    <Tooltip contentStyle={{ fontSize: 12, color: '#64748b' }} />
-                    <Area type="monotone" dataKey="forecast" stroke="#8b5cf6" fill="url(#monthlyForecastGradient)" strokeWidth={2} />
-                  </AreaChart>
-                </ResponsiveContainer>
-                </div>
-              ) : !hasForecastHistory ? (
-                <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-3 pt-4 text-center" role="img" aria-label="Not enough booking history to chart a forecast trend">
-                  <p className="flex h-24 items-center justify-center text-sm text-slate-400">{forecastLoading ? 'Generating forecastÃ¢â‚¬Â¦' : 'Not enough history to chart a trend'}</p>
-                  <div className="grid grid-cols-4 border-t border-slate-200 py-2 text-sm font-medium text-slate-400">
-                    {['Wk 1', 'Wk 2', 'Wk 3', 'Wk 4'].map((label) => <span key={label}>{label}</span>)}
-                  </div>
-                </div>
-              ) : (
-                <div className="flex h-40 items-center justify-center rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 text-center text-sm text-slate-500">
-                  {forecastLoading ? 'Generating forecastÃ¢â‚¬Â¦' : forecastError || 'No forecast available.'}
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div className="lg:col-span-1">
-            <h3 className="mb-4 text-lg font-bold text-slate-900">Recommended resources</h3>
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <TruckIcon size={18} className="text-slate-500" />
-                  <span className="text-sm text-slate-700">Trucks</span>
-                </div>
-                <span className={`text-lg font-bold tabular-nums ${recommendedResources.trucks === 0 ? 'text-slate-400' : 'text-slate-900'}`}>{recommendedResources.trucks}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Users size={18} className="text-slate-500" />
-                  <span className="text-sm text-slate-700">Drivers</span>
-                </div>
-                <span className={`text-lg font-bold tabular-nums ${recommendedResources.drivers === 0 ? 'text-slate-400' : 'text-slate-900'}`}>{recommendedResources.drivers}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Users size={18} className="text-slate-500" />
-                  <span className="text-sm text-slate-700">Helpers</span>
-                </div>
-                <span className={`text-lg font-bold tabular-nums ${recommendedResources.helpers === 0 ? 'text-slate-400' : 'text-slate-900'}`}>{recommendedResources.helpers}</span>
-              </div>
-            </div>
-            <div className="mt-5 border-t border-slate-100 pt-4">
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-sm font-medium text-slate-700">Confidence</span>
-                <div className="flex items-center gap-2">
-                  <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${confidenceLevel.classes}`}>{confidenceLevel.label}</span>
-                  <span className={`text-xl font-bold tabular-nums ${forecastConfidence === 0 ? 'text-slate-400' : 'text-amber-700'}`}>{forecastConfidence}%</span>
-                </div>
-              </div>
-              <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-100" role="progressbar" aria-label="Forecast confidence" aria-valuemin={0} aria-valuemax={100} aria-valuenow={forecastConfidence}>
-                <div className="h-full rounded-full bg-amber-600 transition-all" style={{ width: `${forecastConfidence}%` }} />
-              </div>
-              <p className="mt-2 text-sm text-slate-500">Based on {historicalBookingCount} bookings</p>
-            </div>
-          </div>
-
-          <div className="lg:col-span-1">
-            <h3 className="mb-4 flex items-center gap-2 text-lg font-bold text-slate-900"><Sparkles size={17} className="text-violet-500" aria-hidden="true" /> AI recommendations</h3>
-            {hasLimitedForecastData && (
-              <div className="mb-3 rounded-xl border border-amber-100 bg-amber-50 px-3 py-2 text-sm leading-relaxed text-amber-800">
-                Rough estimates only. Add more booking history for better results.
-              </div>
-            )}
-            <div className="space-y-3">
-              {(forecast?.recommendations || []).length > 0 ? (
-                forecast?.recommendations.map((rec, i) => (
-                  <div key={i} className="flex items-start gap-2 text-sm leading-relaxed text-slate-700">
-                    <CheckCircle size={18} className="text-[#22c55e] flex-shrink-0 mt-0.5" />
-                    <span>{formatForecastRecommendation(rec)}</span>
-                  </div>
-                ))
-              ) : (
-                <div className="flex items-start gap-2 text-sm leading-relaxed text-slate-500">
-                  <PieChartIcon size={18} className="flex-shrink-0 mt-0.5 text-slate-400" aria-hidden="true" />
-                  <span>No AI recommendations are available.</span>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-      </>}
-    </div>
-  );
-}
-
 function ReportSelect({
   id,
+  icon: Icon,
   value,
   options,
   onChange,
 }: {
   id: string;
+  icon?: LucideIcon;
   value: string;
   options: { value: string; label: string }[];
   onChange: (value: string) => void;
@@ -2072,8 +1483,9 @@ function ReportSelect({
     <Select value={value} onValueChange={onChange}>
       <SelectTrigger
         id={id}
-        className="h-10 gap-3 rounded-xl border-slate-300 px-3 text-left text-slate-700 shadow-sm transition hover:border-slate-400 focus:border-slate-300 focus:ring-2 focus:ring-slate-300 focus:ring-offset-1 data-[state=open]:ring-1 data-[state=open]:ring-slate-200 [&>svg]:shrink-0 [&>svg]:text-slate-500 [&>svg]:opacity-100 [&>svg]:transition-transform data-[state=open]:[&>svg]:rotate-180 data-[state=open]:[&>svg]:text-[#a16207]"
+        className={`${FILTER_CHIP_CLASSES} w-fit max-w-full gap-2.5 py-0 focus-within:border-[#1a1f6e] focus-within:ring-2 focus-within:ring-[#1a1f6e]/15 data-[state=open]:border-[#1a1f6e] [&>svg]:h-[18px] [&>svg]:w-[18px] [&>svg]:shrink-0 [&>svg]:text-[#0b0f4a] [&>svg]:opacity-100`}
       >
+        {Icon && <span className="flex shrink-0 text-[#0b0f4a]" aria-hidden="true"><Icon size={18} strokeWidth={2} /></span>}
         <SelectValue />
       </SelectTrigger>
       <SelectContent className="max-h-72">
@@ -2085,583 +1497,279 @@ function ReportSelect({
   );
 }
 
-function DistributionDonut({
-  data,
-  colors,
-  fallbackColor,
-  centerLabel,
-  centerSubLabel,
-  valueFormatter,
-  showCounts,
-  emptyTitle,
-  emptyHint,
-  horizontal = false,
-  large = false,
-}: {
-  data: { name: string; value: number }[];
-  colors: Record<string, string>;
-  fallbackColor: string;
-  centerLabel: string;
-  centerSubLabel: string;
-  valueFormatter?: (v: number) => string;
-  showCounts?: boolean;
-  emptyTitle: string;
-  emptyHint: string;
-  horizontal?: boolean;
-  large?: boolean;
-}) {
-  const total = data.reduce((sum, d) => sum + d.value, 0);
-  const displayedCenterLabel = centerSubLabel === 'total collected' && centerLabel.length > 10
-    ? PHP_COMPACT_CURRENCY_FORMATTER.format(toNumber(centerLabel))
-    : centerLabel;
-  if (total === 0 && !showCounts) {
-    return (
-      <div className="flex min-h-[180px] flex-col items-center justify-center rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-center" role="status">
-        <PieChartIcon size={26} className="mb-2 text-slate-300" aria-hidden="true" />
-        <p className="text-base font-semibold text-slate-600">{emptyTitle}</p>
-        <p className="mt-1 max-w-[220px] text-sm text-slate-400">{emptyHint}</p>
-      </div>
-    );
-  }
-  const circumference = 2 * Math.PI * 44;
-  let accumulated = 0;
-  return (
-    <div className={`${horizontal && large ? 'flex min-h-[190px] min-w-0 items-center gap-6 overflow-hidden' : `flex items-center gap-3 ${horizontal ? 'flex-col sm:flex-row sm:justify-between' : 'flex-col gap-4'}`}`}>
-      <div className={`relative shrink-0 ${large ? 'h-40 w-40' : horizontal ? 'h-32 w-32' : 'h-36 w-36'}`} role="img" aria-label={`${displayedCenterLabel} ${centerSubLabel}`}>
-        <svg viewBox="0 0 100 100" className="h-full w-full" aria-hidden="true">
-          <circle cx="50" cy="50" r="44" fill="none" stroke="#eef0f6" strokeWidth="11" />
-          {total > 0 && data.map((entry, i) => {
-            const segmentLength = (entry.value / total) * circumference;
-            const dashOffset = -accumulated;
-            accumulated += segmentLength;
-            return (
-              <circle
-                key={entry.name}
-                cx="50"
-                cy="50"
-                r="44"
-                fill="none"
-                stroke={colors[entry.name] || COLORS[i % COLORS.length] || fallbackColor}
-                strokeWidth="11"
-                strokeDasharray={`${segmentLength} ${circumference - segmentLength}`}
-                strokeDashoffset={dashOffset}
-                transform="rotate(-90 50 50)"
-              />
-            );
-          })}
-        </svg>
-        <div className="absolute inset-0 flex flex-col items-center justify-center">
-          <div className="max-w-[110px] text-center">
-            <span className="block break-words text-[17px] font-semibold leading-tight tabular-nums text-slate-900">{displayedCenterLabel}</span>
-            <span className="block text-xs text-slate-500">{centerSubLabel}</span>
-          </div>
-        </div>
-      </div>
-      <div className={`${horizontal && large ? 'min-w-0 flex-1 space-y-2' : `w-full space-y-2 ${horizontal ? 'min-w-0 flex-1' : 'max-w-sm'}`}`}>
-        {data.map((entry, i) => {
-          const pct = total > 0 ? (entry.value / total) * 100 : 0;
-          const color = colors[entry.name] || COLORS[i % COLORS.length] || fallbackColor;
-          return (
-            <div key={entry.name} title={`${entry.name}: ${valueFormatter ? valueFormatter(entry.value) : entry.value}${showCounts ? '' : ` (${pct.toFixed(1)}%)`}`} className={horizontal && large ? 'flex min-w-0 items-center gap-3 text-sm' : 'grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2 text-sm'}>
-              <span className={`h-2.5 w-2.5 shrink-0 ${horizontal && large ? 'rounded-sm' : 'rounded-full'}`} style={{ backgroundColor: color }} />
-              <span className={`text-slate-700 ${horizontal && large ? 'min-w-0 flex-1 truncate' : 'truncate'}`}>{entry.name}</span>
-              {!showCounts && <span className="shrink-0 text-right font-semibold tabular-nums text-slate-700">{pct.toFixed(0)}%</span>}
-              <span className={`${horizontal && large ? 'shrink-0 whitespace-nowrap font-semibold text-slate-900' : showCounts ? 'min-w-8 text-sm font-semibold text-slate-700' : 'min-w-[62px] text-sm text-slate-400'} text-right tabular-nums`}>{showCounts ? entry.value : valueFormatter ? valueFormatter(entry.value) : `(${entry.value})`}</span>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-function formatForecastRecommendation(recommendation: string): string {
-  return recommendation
-    .replace(/historical booking\(s\)/gi, 'historical bookings')
-    .replace(/booking\(s\)/gi, 'bookings')
-    .replace(/~(\d+) daily assignments?/gi, (_match, count: string) => `about ${count} daily assignment${count === '1' ? '' : 's'}`)
-    .replace(/"your core"|your core/gi, 'your top service');
-}
-
-function OperationalReportLayout({
-  fleetUtilization,
-  jobsPerVehicle,
-  onTimeArrival,
-  activeJobOrders,
-  crewOnDuty,
-  crewSummary,
-  crewTotals,
-  bookingLoadError,
-  assignmentLoadError,
-  jobOrderLoadError,
-  postServiceLoadError,
-  crewLoadError,
-  vehicleLoadError,
-  completedVsCancelled,
-  vehicleStatus,
-  dateFrom,
-  dateTo,
-}: {
-  fleetUtilization: { rate: number | null; assigned: number; total: number | null; unavailable: boolean };
-  /** Confirmed assignments per vehicle in the period; vehicles with none are not listed. */
-  jobsPerVehicle: { name: string; assignedJobs: number }[];
-  onTimeArrival: { rate: number | null; onTime: number; delayed: number; measured: number; unmeasurable: number; unavailable: boolean };
-  activeJobOrders: { count: number; pendingDistribution: number };
-  crewOnDuty: { drivers: number; helpers: number };
-  crewSummary: { availableDrivers: number; availableHelpers: number; assignedCrew: number };
-  /** Everyone on each roster, whatever their status. */
-  crewTotals: { drivers: number; helpers: number };
-  bookingLoadError: boolean;
-  assignmentLoadError: boolean;
-  jobOrderLoadError: boolean;
-  postServiceLoadError: boolean;
-  crewLoadError: boolean;
-  vehicleLoadError: boolean;
-  completedVsCancelled: { label: string; completed: number; cancelled: number }[];
-  vehicleStatus: { name: string; value: number }[];
-  dateFrom: string;
-  dateTo: string;
-}) {
-  const statusColors: Record<string, string> = {
-    Available: '#22c55e',
-    Assigned: '#3b82f6',
-    'Under Maintenance': '#a855f7',
-    'Under Repair': '#ef4444',
-  };
-
-  const completedCount = completedVsCancelled.reduce((sum, month) => sum + month.completed, 0);
-  const cancelledCount = completedVsCancelled.reduce((sum, month) => sum + month.cancelled, 0);
-  const closedJobsCount = completedCount + cancelledCount;
-  const cancellationRate = closedJobsCount > 0 ? Math.round((cancelledCount / closedJobsCount) * 100) : null;
-  const completionDataUnavailable = bookingLoadError || postServiceLoadError;
-  const hasClosedJobs = closedJobsCount > 0 && !completionDataUnavailable;
-  const unassignedBookings = fleetUtilization.total === null ? null : Math.max(0, fleetUtilization.total - fleetUtilization.assigned);
-  const formatRangeDate = (value: string) => {
-    const date = new Date(`${value}T00:00:00`);
-    return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString('en-PH', { month: 'short', day: 'numeric' });
-  };
-  const muted = (isEmpty: boolean) => (isEmpty ? 'text-slate-400' : undefined);
-  const VEHICLE_ROWS = 6;
-  const rankedVehicles = [...jobsPerVehicle].sort((a, b) => b.assignedJobs - a.assignedJobs);
-  const topVehicleJobs = rankedVehicles[0]?.assignedJobs ?? 0;
-  const fleetSize = vehicleLoadError ? null : vehicleStatus.reduce((sum, item) => sum + item.value, 0);
-  const idleVehicles = fleetSize === null ? null : Math.max(0, fleetSize - rankedVehicles.length);
-  const totalVehicleJobs = rankedVehicles.reduce((sum, vehicle) => sum + vehicle.assignedJobs, 0);
-  const averageVehicleJobs = rankedVehicles.length > 0 ? Number((totalVehicleJobs / rankedVehicles.length).toFixed(1)) : 0;
-  const viewLink = (to: string, label: string) => (
-    <Link to={to} aria-label={label} className="inline-flex h-9 w-fit shrink-0 items-center gap-1 whitespace-nowrap px-1 text-sm font-semibold text-[#8a6d00] hover:text-[#6e5700] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#8a6d00]/30">
-      View details <ChevronRight size={14} aria-hidden="true" />
-    </Link>
-  );
-  const crewRows = [
-    { label: 'Drivers', icon: UserRound, color: '#3b82f6', available: crewSummary.availableDrivers, onDuty: crewOnDuty.drivers, total: crewTotals.drivers },
-    { label: 'Helpers', icon: UsersRound, color: '#a855f7', available: crewSummary.availableHelpers, onDuty: crewOnDuty.helpers, total: crewTotals.helpers },
-  ];
-
-  return (
-    <div className="space-y-6">
-      {/* How the selected period went */}
-      <section aria-labelledby="operational-kpi-heading" className="space-y-3">
-        <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-1">
-          <h3 id="operational-kpi-heading" className="text-sm font-semibold text-slate-900">Performance this period</h3>
-        </div>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <KPICard
-            variant="dashboard-compact"
-            label="Bookings with a vehicle"
-            value={fleetUtilization.unavailable ? 'Unavailable' : `${fleetUtilization.rate ?? 0}%`}
-            description={fleetUtilization.unavailable ? 'Booking or dispatch data unavailable' : `${fleetUtilization.assigned} of ${fleetUtilization.total ?? 0} · ${unassignedBookings ?? 0} still unassigned`}
-            icon={TruckIcon}
-            iconColor="#3b82f6"
-            valueClassName={muted(fleetUtilization.unavailable || fleetUtilization.total === 0)}
-          />
-          <KPICard
-            variant="dashboard-compact"
-            label="On-time arrival"
-            value={onTimeArrival.unavailable ? 'Unavailable' : onTimeArrival.rate === null ? 'No data' : `${onTimeArrival.rate}%`}
-            description={onTimeArrival.unavailable ? 'Booking or post-service data unavailable' : `${onTimeArrival.onTime} on time · ${onTimeArrival.delayed} delayed`}
-            icon={Timer}
-            iconColor="#22c55e"
-            valueClassName={muted(onTimeArrival.unavailable || onTimeArrival.rate === null)}
-          />
-          <KPICard
-            variant="dashboard-compact"
-            label="Completed services"
-            value={completionDataUnavailable ? 'Unavailable' : String(completedCount)}
-            description={completionDataUnavailable ? 'Booking or post-service data unavailable' : `${cancelledCount} cancelled · ${cancellationRate === null ? 'no' : `${cancellationRate}%`} cancellation rate`}
-            icon={CheckCircle}
-            iconColor="#10b981"
-            valueClassName={muted(completionDataUnavailable || completedCount === 0)}
-          />
-          <KPICard
-            variant="dashboard-compact"
-            label="Job orders"
-            value={jobOrderLoadError ? 'Unavailable' : String(activeJobOrders.count)}
-            description={jobOrderLoadError ? 'Job order data unavailable' : activeJobOrders.pendingDistribution > 0 ? `${activeJobOrders.pendingDistribution} pending distribution` : 'All distributed'}
-            icon={Package}
-            iconColor="#a855f7"
-            valueClassName={!jobOrderLoadError && activeJobOrders.pendingDistribution > 0 ? undefined : muted(jobOrderLoadError || activeJobOrders.count === 0)}
-          />
-        </div>
-      </section>
-
-      {/* How jobs closed, and which vehicles carried them */}
-      <div className="grid grid-cols-1 items-stretch gap-4 lg:grid-cols-2">
-      <ChartCard
-        title="Completed vs cancelled jobs"
-        className="h-full min-w-0"
-        subtitle={completionDataUnavailable ? 'Booking or post-service records are unavailable' : hasClosedJobs ? 'Closed jobs per month' : 'Nothing closed in the selected period'}
-        rightAction={(
-          <div className="flex flex-wrap items-center justify-end gap-3">
-            <span className="inline-flex items-center gap-1.5 text-sm text-slate-600"><span className="h-2 w-2 rounded-full bg-[#16a34a]" aria-hidden="true" />Completed</span>
-            <span className="inline-flex items-center gap-1.5 text-sm text-slate-600"><span className="h-2 w-2 rounded-full bg-[#ef4444]" aria-hidden="true" />Cancelled</span>
-            {viewLink('/admin/post-service', 'View completed services')}
-          </div>
-        )}
-      >
-        {!hasClosedJobs ? (
-          <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50/70 px-4 pt-5 text-center">
-            <div className="flex min-h-[88px] flex-col items-center justify-center">
-              <BarChart3 size={24} className="mb-2 text-slate-300" aria-hidden="true" />
-              <p className="text-base font-semibold text-slate-600">{completionDataUnavailable ? 'Booking or post-service records are unavailable' : 'No completed or cancelled jobs yet'}</p>
-              <p className="mt-1 text-sm text-slate-400">Closed jobs for {formatRangeDate(dateFrom)} to {formatRangeDate(dateTo)} will show up here.</p>
-            </div>
-            <div className="mt-3 flex flex-wrap justify-between gap-x-4 gap-y-1 border-t border-slate-300/70 py-2 text-sm font-medium text-slate-400">
-              {completedVsCancelled.map((month, index) => <span key={`${month.label}-${index}`} className="whitespace-nowrap">{month.label}</span>)}
-            </div>
-          </div>
-        ) : (
-          <div role="img" aria-label={`${completedCount} completed and ${cancelledCount} cancelled jobs from ${formatRangeDate(dateFrom)} to ${formatRangeDate(dateTo)}`}>
-            <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={completedVsCancelled} margin={{ top: 12, right: 12, left: 0, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
-                <XAxis dataKey="label" tick={{ fontSize: 12, fill: '#64748b' }} tickLine={false} />
-                <YAxis tick={{ fontSize: 12, fill: '#64748b' }} allowDecimals={false} width={34} />
-                <Tooltip cursor={{ fill: '#f1f4fa' }} contentStyle={{ borderRadius: '0.75rem', border: '1px solid #e2e8f0', fontSize: 12, color: '#334155', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
-                <Bar dataKey="completed" name="Completed" fill="#16a34a" radius={[4, 4, 0, 0]} maxBarSize={28} />
-                <Bar dataKey="cancelled" name="Cancelled" fill="#ef4444" radius={[4, 4, 0, 0]} maxBarSize={28} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        )}
-      </ChartCard>
-
-      <ChartCard
-        title="Jobs per vehicle"
-        subtitle="Confirmed assignments in this period"
-        className="h-full min-w-0"
-        rightAction={viewLink('/admin/scheduling', 'View scheduling')}
-      >
-        {fleetUtilization.unavailable ? (
-          <p role="alert" className="text-sm text-red-700">Booking or dispatch records could not be loaded, so jobs per vehicle are unavailable.</p>
-        ) : rankedVehicles.length === 0 ? (
-          <div className="flex min-h-[180px] flex-col items-center justify-center rounded-xl border border-dashed border-slate-300 bg-slate-50/70 px-4 text-center">
-            <TruckIcon size={24} className="mb-2 text-slate-300" aria-hidden="true" />
-            <p className="text-base font-semibold text-slate-600">No vehicles assigned yet</p>
-            <p className="mt-1 text-sm text-slate-400">Confirmed assignments for {formatRangeDate(dateFrom)} to {formatRangeDate(dateTo)} will show up here.</p>
-          </div>
-        ) : (
-          <div className="space-y-4">
-            {/* Summary strip: how much of the fleet was used, and how much work it carried */}
-            <div className="grid grid-cols-3 gap-2">
-              <div className="rounded-xl bg-slate-50 px-3 py-2.5">
-                <p className="text-xs font-medium text-slate-500">Vehicles used</p>
-                <p className="mt-0.5 text-lg font-bold tabular-nums text-[#0b0f4a]">{rankedVehicles.length}{fleetSize !== null && <span className="text-sm font-medium text-slate-400"> / {fleetSize}</span>}</p>
-              </div>
-              <div className="rounded-xl bg-slate-50 px-3 py-2.5">
-                <p className="text-xs font-medium text-slate-500">Total jobs</p>
-                <p className="mt-0.5 text-lg font-bold tabular-nums text-[#0b0f4a]">{totalVehicleJobs}</p>
-              </div>
-              <div className="min-w-0 rounded-xl bg-slate-50 px-3 py-2.5">
-                <p className="text-xs font-medium text-slate-500">Avg per vehicle</p>
-                <p className="mt-0.5 text-lg font-bold tabular-nums text-[#0b0f4a]">{averageVehicleJobs}</p>
-              </div>
-            </div>
-
-            {/* Ranked vehicles, busiest first */}
-            <ol className="space-y-2.5">
-              {rankedVehicles.slice(0, VEHICLE_ROWS).map((vehicle, index) => {
-                const share = totalVehicleJobs > 0 ? Math.round((vehicle.assignedJobs / totalVehicleJobs) * 100) : 0;
-                return (
-                  <li key={vehicle.name} className="flex items-center gap-3">
-                    <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-bold tabular-nums ${index === 0 ? 'bg-[#e8b800] text-[#0b0f4a]' : 'bg-slate-100 text-slate-500'}`} aria-label={`Rank ${index + 1}`}>{index + 1}</span>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-baseline justify-between gap-3">
-                        <span className="truncate text-sm font-medium text-slate-800" title={vehicle.name}>{vehicle.name}</span>
-                        <span className="shrink-0 text-sm tabular-nums"><span className="font-semibold text-[#0b0f4a]">{vehicle.assignedJobs}</span><span className="text-slate-400"> {vehicle.assignedJobs === 1 ? 'job' : 'jobs'} · {share}%</span></span>
-                      </div>
-                      <span className="mt-1 block h-2 overflow-hidden rounded-full bg-[#eef0f6]" aria-hidden="true">
-                        <span className="block h-full rounded-full bg-[#1a1f6e]" style={{ width: `${topVehicleJobs > 0 ? (vehicle.assignedJobs / topVehicleJobs) * 100 : 0}%` }} />
-                      </span>
-                    </div>
-                  </li>
-                );
-              })}
-            </ol>
-
-            <div className="flex flex-wrap items-center gap-2 text-xs">
-              {rankedVehicles.length > VEHICLE_ROWS && <span className="rounded-full bg-slate-100 px-2.5 py-1 font-medium text-slate-600">+{rankedVehicles.length - VEHICLE_ROWS} more {rankedVehicles.length - VEHICLE_ROWS === 1 ? 'vehicle' : 'vehicles'}</span>}
-              {idleVehicles === null
-                ? <span className="text-slate-500">Fleet records are unavailable, so idle vehicles cannot be counted.</span>
-                : idleVehicles > 0
-                  ? <span className="rounded-full border border-amber-300 bg-amber-50 px-2.5 py-1 font-medium text-amber-700">{idleVehicles} {idleVehicles === 1 ? 'vehicle' : 'vehicles'} idle this period</span>
-                  : <span className="rounded-full border border-emerald-300 bg-emerald-50 px-2.5 py-1 font-medium text-emerald-700">Every vehicle had a job</span>}
-            </div>
-          </div>
-        )}
-      </ChartCard>
-      </div>
-
-      {/* What is available right now */}
-      <section aria-labelledby="operational-resources-heading" className="space-y-3">
-        <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-1">
-          <h3 id="operational-resources-heading" className="text-sm font-semibold text-slate-900">Resources right now</h3>
-          <p className="text-xs text-slate-500">Current fleet and roster status</p>
-        </div>
-        <div className="grid grid-cols-1 items-stretch gap-4 lg:grid-cols-2">
-          <StatusBreakdownCard
-            title="Vehicle status"
-            unavailable={vehicleLoadError}
-            rightAction={viewLink('/admin/vehicle-availability', 'View vehicle availability')}
-            total={vehicleLoadError ? 0 : vehicleStatus.reduce((sum, item) => sum + item.value, 0)}
-            centerLabel="vehicles"
-            items={vehicleStatus.map((entry, i) => ({
-              label: entry.name,
-              color: statusColors[entry.name] || COLORS[i % COLORS.length],
-              value: entry.value,
-            }))}
-          />
-
-          <ChartCard title="Crew availability" subtitle="Drivers and helpers by roster status" className="h-full min-w-0" rightAction={viewLink('/admin/vehicle-availability', 'View drivers and helpers')}>
-            {crewLoadError ? (
-              <p role="alert" className="text-sm text-red-700">Driver and helper records could not be loaded.</p>
-            ) : (
-              <div className="space-y-4">
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  {crewRows.map(({ label, icon: Icon, color, available, onDuty, total }) => {
-                    const unavailable = Math.max(0, total - available - onDuty);
-                    const width = (count: number) => (total > 0 ? `${(count / total) * 100}%` : '0%');
-                    return (
-                      <div key={label} className="rounded-xl border border-slate-200/70 bg-slate-50/60 p-3.5">
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="flex min-w-0 items-center gap-2.5">
-                            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full" style={{ backgroundColor: `${color}18`, color }}><Icon className="h-[18px] w-[18px]" aria-hidden="true" /></span>
-                            <span className="text-sm font-semibold text-slate-900">{label}</span>
-                          </span>
-                          <span className="text-xs text-slate-500">{total} on roster</span>
-                        </div>
-                        <p className="mt-3 flex items-baseline gap-1.5">
-                          <span className={`text-[26px] font-bold leading-none tabular-nums ${available === 0 ? 'text-slate-400' : 'text-[#0b0f4a]'}`}>{available}</span>
-                          <span className="text-sm text-slate-500">available now</span>
-                        </p>
-                        <div role="img" aria-label={`${label}: ${available} available, ${onDuty} on duty, ${unavailable} unavailable`} className="mt-3 flex h-2 w-full overflow-hidden rounded-full bg-[#eef0f6]">
-                          <span className="h-full bg-emerald-500" style={{ width: width(available) }} />
-                          <span className="h-full bg-blue-500" style={{ width: width(onDuty) }} />
-                          <span className="h-full bg-slate-300" style={{ width: width(unavailable) }} />
-                        </div>
-                        <dl className="mt-2.5 grid grid-cols-3 gap-1 text-xs">
-                          <div><dt className="flex items-center gap-1 text-slate-500"><span className="h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden="true" />Available</dt><dd className="font-semibold tabular-nums text-slate-800">{available}</dd></div>
-                          <div><dt className="flex items-center gap-1 text-slate-500"><span className="h-1.5 w-1.5 rounded-full bg-blue-500" aria-hidden="true" />On duty</dt><dd className="font-semibold tabular-nums text-slate-800">{onDuty}</dd></div>
-                          <div><dt className="flex items-center gap-1 text-slate-500"><span className="h-1.5 w-1.5 rounded-full bg-slate-300" aria-hidden="true" />Unavailable</dt><dd className="font-semibold tabular-nums text-slate-800">{unavailable}</dd></div>
-                        </dl>
-                      </div>
-                    );
-                  })}
-                </div>
-                <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">
-                  {assignmentLoadError
-                    ? 'Assignment records are unavailable, so crew on assignments in this period cannot be counted.'
-                    : <><span className="font-semibold text-[#0b0f4a]">{crewSummary.assignedCrew}</span> crew {crewSummary.assignedCrew === 1 ? 'member was' : 'members were'} on confirmed assignments in this period. Unavailable covers leave and other non-working statuses.</>}
-                </p>
-              </div>
-            )}
-          </ChartCard>
-        </div>
-      </section>
-    </div>
-  );
-}
-
 function DailyReportLayout({
-  dailyKpis, dailyBookingSummary, paymentTracking, dailySalesLoadError, bookingLoadError, dateTo, recentBookings, dailyChartDays, onDailyChartDaysChange,
+  dailyKpis, paymentTracking, dailySalesLoadError, bookingLoadError, vehicleLoadError, crewLoadError, reportDate,
+  todayBookings, salesByService, jobsByHour, freeTrucks, freeHelpers,
 }: {
   dailyKpis: {
     totalSales: number; bookingsToday: number; pendingPlotting: number; codCollected: number;
     onlinePayments: number; pendingCollections: number; completedJobs: number; cancelledJobs: number;
   };
-  dailyBookingSummary: { label: string; date: string; count: number }[];
   paymentTracking: { cash: number; bdo: number; gcash: number; xendit: number; sales: number; collected: number; outstanding: number };
   dailySalesLoadError: boolean;
   bookingLoadError: boolean;
-  dateTo: string;
-  recentBookings: Booking[];
-  dailyChartDays: 7 | 30 | 90;
-  onDailyChartDaysChange: (value: 7 | 30 | 90) => void;
+  vehicleLoadError: boolean;
+  crewLoadError: boolean;
+  reportDate: string;
+  todayBookings: Booking[];
+  salesByService: { service: string; amount: number; count: number }[];
+  jobsByHour: { hours: { hour: number; label: string; jobs: number }[]; peak: number; overStart: number | null; overEnd: number | null; unscheduled: number };
+  freeTrucks: number;
+  freeHelpers: number;
 }) {
-  const [recentBookingsPage, setRecentBookingsPage] = useState(1);
-  const [recentBookingsPageSize, setRecentBookingsPageSize] = useState(8);
-  const dailyKpisUnavailable = dailySalesLoadError || bookingLoadError;
-  // The payment card is the one place money is broken down, by the channels the sales records actually keep.
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(8);
+  const kpisUnavailable = dailySalesLoadError || bookingLoadError;
+  const activeCount = dailyKpis.bookingsToday;
+  const collectedShare = paymentTracking.sales > 0 ? Math.min(100, (paymentTracking.collected / paymentTracking.sales) * 100) : 0;
+  const reportDateLabel = formatFilterDate(reportDate, true);
+  const maxServiceAmount = Math.max(1, ...salesByService.map((row) => row.amount));
+  const totalPages = Math.max(1, Math.ceil(todayBookings.length / pageSize));
+  const safePage = Math.min(page, totalPages);
+  const pagedBookings = todayBookings.slice((safePage - 1) * pageSize, safePage * pageSize);
+  const unpaidBookings = todayBookings.filter((booking) => normalizeBookingStatus(booking.status) !== 'Cancelled').length;
+
   const methodRows = [
     { label: 'Cash', amount: paymentTracking.cash, color: '#f59e0b' },
     { label: 'BDO', amount: paymentTracking.bdo, color: '#1d4ed8' },
     { label: 'GCash', amount: paymentTracking.gcash, color: '#0ea5e9' },
     { label: 'Xendit', amount: paymentTracking.xendit, color: '#8b5cf6' },
-  ];
-  const paymentTotal = paymentTracking.sales;
-  const hasPaymentActivity = paymentTracking.sales > 0 || paymentTracking.collected > 0;
-  const paymentStatus = paymentTracking.outstanding <= 0
+  ].filter((row) => row.amount > 0);
+  const paymentStatus = paymentTracking.sales > 0 && paymentTracking.outstanding <= 0
     ? { label: 'Fully collected', className: 'border-emerald-300 bg-emerald-50 text-emerald-700' }
     : paymentTracking.collected > 0
       ? { label: 'Partially collected', className: 'border-amber-300 bg-amber-50 text-amber-700' }
       : { label: 'Pending collection', className: 'border-slate-300 bg-slate-50 text-slate-600' };
-  const dateRangeLabel = `${dailyChartDays}-day period ending ${dateTo}`;
-  const recentBookingsTotalPages = Math.max(1, Math.ceil(recentBookings.length / recentBookingsPageSize));
-  const safeRecentBookingsPage = Math.min(recentBookingsPage, recentBookingsTotalPages);
-  const paginatedRecentBookings = recentBookings.slice(
-    (safeRecentBookingsPage - 1) * recentBookingsPageSize,
-    safeRecentBookingsPage * recentBookingsPageSize,
-  );
-  const muted = (isZero: boolean) => (isZero ? 'text-slate-400' : undefined);
+
+  // What stands between today's bookings and a finished, paid day.
+  const attention: { key: string; tone: 'amber' | 'red' | 'slate'; icon: LucideIcon; title: string; detail: string }[] = [];
+  if (!bookingLoadError && dailyKpis.pendingPlotting > 0) {
+    attention.push({ key: 'plotting', tone: 'amber', icon: Truck, title: `${dailyKpis.pendingPlotting} ${dailyKpis.pendingPlotting === 1 ? 'booking' : 'bookings'} awaiting assignment`, detail: 'No truck or team yet' });
+  }
+  if (!bookingLoadError && !vehicleLoadError && jobsByHour.overStart !== null && jobsByHour.overEnd !== null) {
+    attention.push({ key: 'trucks', tone: 'red', icon: AlertTriangle, title: `Truck shortage, ${formatHourLabel(jobsByHour.overStart)} to ${formatHourLabel(jobsByHour.overEnd)}`, detail: `Up to ${jobsByHour.peak} jobs at once, ${freeTrucks} ${freeTrucks === 1 ? 'truck' : 'trucks'} available` });
+  }
+  if (!crewLoadError && freeHelpers === 0 && dailyKpis.pendingPlotting > 0) {
+    attention.push({ key: 'helpers', tone: 'red', icon: UsersRound, title: 'No helpers are free', detail: "Bookings that need helpers can't be plotted yet" });
+  }
+  if (!kpisUnavailable && paymentTracking.outstanding > 0) {
+    attention.push({ key: 'collect', tone: 'slate', icon: Wallet, title: `${formatPeso(paymentTracking.outstanding)} not yet collected`, detail: paymentTracking.collected > 0 ? `${formatPeso(paymentTracking.collected)} verified so far` : `${unpaidBookings} ${unpaidBookings === 1 ? 'booking' : 'bookings'} with no verified payment` });
+  }
+  const toneClasses = {
+    amber: 'bg-amber-50 text-amber-600',
+    red: 'bg-red-50 text-red-600',
+    slate: 'bg-emerald-50 text-emerald-600',
+  } as const;
+
+  const chartData = jobsByHour.hours.map((hour) => ({ ...hour, over: hour.jobs > freeTrucks }));
+  const jobsSubtitle = jobsByHour.hours.length === 0
+    ? 'No timed bookings today'
+    : `Peak of ${jobsByHour.peak} at the same time, with ${freeTrucks} ${freeTrucks === 1 ? 'truck' : 'trucks'} available`;
 
   return (
     <div className="space-y-6">
-      <section aria-labelledby="daily-kpi-heading" className="space-y-3">
-        <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-1">
-          <h3 id="daily-kpi-heading" className="text-sm font-semibold text-slate-900">Today at a glance</h3>
-        </div>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <KPICard
-            variant="dashboard-compact"
-            label="Today's sales"
-            value={bookingLoadError ? 'Unavailable' : formatPeso(dailyKpis.totalSales)}
-            description={bookingLoadError ? 'Booking data unavailable' : 'Active booking value'}
-            icon={PhilippinePeso}
-            iconColor="#059669"
-            valueClassName={muted(!bookingLoadError && dailyKpis.totalSales === 0)}
-          />
-          <KPICard
-            variant="dashboard-compact"
-            label="Bookings today"
-            value={bookingLoadError ? 'Unavailable' : String(dailyKpis.bookingsToday)}
-            description={bookingLoadError ? 'Booking data unavailable' : dailyKpis.cancelledJobs > 0 ? `${dailyKpis.cancelledJobs} cancelled today` : 'None cancelled today'}
-            icon={CalendarDays}
-            iconColor="#1a1f6e"
-            valueClassName={muted(!bookingLoadError && dailyKpis.bookingsToday === 0)}
-          />
-          <KPICard
-            variant="dashboard-compact"
-            label="Awaiting assignment"
-            value={bookingLoadError ? 'Unavailable' : String(dailyKpis.pendingPlotting)}
-            description={bookingLoadError ? 'Booking data unavailable' : dailyKpis.pendingPlotting > 0 ? 'For Plotting, no truck or team yet' : "All of today's bookings are assigned"}
-            icon={Truck}
-            iconColor="#d97706"
-            valueClassName={!bookingLoadError && dailyKpis.pendingPlotting > 0 ? 'text-amber-600' : muted(!bookingLoadError)}
-          />
-          <KPICard
-            variant="dashboard-compact"
-            label="Completed jobs"
-            value={dailyKpisUnavailable ? 'Unavailable' : String(dailyKpis.completedJobs)}
-            description={dailyKpisUnavailable ? 'Booking or sales data unavailable' : 'Completed or in today’s sales report'}
-            icon={CheckCircle}
-            iconColor="#10b981"
-            valueClassName={muted(!dailyKpisUnavailable && dailyKpis.completedJobs === 0)}
-          />
-        </div>
+      <section aria-label="Today at a glance" className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <KPICard label="Daily Sales" value={bookingLoadError ? 'Unavailable' : formatPeso(dailyKpis.totalSales)} icon={PhilippinePeso} iconColor="#10b981" variant="dashboard-compact" />
+        <KPICard label="Awaiting Assignment" value={bookingLoadError ? 'Unavailable' : `${dailyKpis.pendingPlotting} of ${activeCount}`} icon={Truck} iconColor="#d97706" variant="dashboard-compact" />
+        <KPICard label="Jobs Completed" value={kpisUnavailable ? 'Unavailable' : `${dailyKpis.completedJobs} of ${activeCount}`} icon={CheckCircle} iconColor="#1a1f6e" variant="dashboard-compact" />
+        <KPICard label="Collected" value={kpisUnavailable ? 'Unavailable' : formatPeso(paymentTracking.collected)} icon={Wallet} iconColor="#0ea5e9" variant="dashboard-compact" />
       </section>
 
       <div className="grid min-w-0 grid-cols-1 items-stretch gap-5 lg:grid-cols-2">
-        <ChartCard title="Daily booking summary" subtitle="Non-cancelled bookings received by day" className="min-w-0" rightAction={<div className="flex shrink-0 rounded-full border border-slate-200 bg-slate-50 p-1" aria-label="Booking chart date range">{([7, 30, 90] as const).map((days) => <button key={days} type="button" aria-pressed={dailyChartDays === days} onClick={() => onDailyChartDaysChange(days)} className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${dailyChartDays === days ? 'bg-[#1a1f6e] text-white shadow-sm' : 'text-slate-600'}`}>{days} days</button>)}</div>}>
-          <div className="min-w-0" role="img" aria-label={`Non-cancelled bookings received per day for the last ${dailyChartDays} days through ${dateTo}`}>
-            <ResponsiveContainer width="100%" height={260}>
-              <BarChart data={dailyBookingSummary} margin={{ top: 12, right: 8, left: -12, bottom: 30 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
-                <XAxis dataKey="label" interval="preserveStartEnd" minTickGap={14} angle={-35} textAnchor="end" height={55} tick={{ fontSize: 11, fill: '#64748b' }} tickLine={false} />
-                <YAxis tick={{ fontSize: 12, fill: '#64748b' }} allowDecimals={false} domain={[0, 'dataMax + 1']} width={34} />
-                <Tooltip labelFormatter={(_, payload) => payload?.[0]?.payload?.date ? new Date(`${payload[0].payload.date}T00:00:00`).toLocaleDateString('en-PH', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }) : ''} formatter={(value: number) => [value, 'Bookings received']} contentStyle={{ borderRadius: '0.75rem', border: '1px solid #e2e8f0', fontSize: 12, color: '#334155', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
-                <Bar dataKey="count" name="Bookings received" fill="#1a1f6e" radius={[4, 4, 0, 0]} maxBarSize={32} />
-              </BarChart>
-            </ResponsiveContainer>
-            {dailyBookingSummary.every((day) => day.count === 0) && <p className="-mt-5 text-center text-xs text-slate-500">No bookings received in this period ({dateRangeLabel}).</p>}
-          </div>
+        <ChartCard title="Sales by service" className="min-w-0">
+          {bookingLoadError ? (
+            <p role="alert" className="text-sm text-red-700">Booking data could not be loaded.</p>
+          ) : salesByService.length === 0 ? (
+            <EmptyPanel title="No sales scheduled today" detail="Bookings scheduled for today will be broken down by service here." />
+          ) : (
+            <ul className="space-y-4">
+              {salesByService.map((row) => (
+                <li key={row.service} className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] items-center gap-4">
+                  <div className="min-w-0">
+                    <p className="truncate text-[15px] font-semibold text-[#0b0f4a]">{row.service}</p>
+                    <p className="text-sm text-slate-600">{row.count} {row.count === 1 ? 'booking' : 'bookings'}</p>
+                  </div>
+                  <div className="h-3 w-full overflow-hidden rounded-full bg-[#eef0f6]" aria-hidden="true">
+                    <div className="h-full rounded-full bg-[#1a1f6e]" style={{ width: `${Math.max(4, (row.amount / maxServiceAmount) * 100)}%` }} />
+                  </div>
+                  <p className="text-right text-[15px] font-semibold tabular-nums text-[#0b0f4a]">{formatPeso(row.amount)}</p>
+                </li>
+              ))}
+              <li className="flex items-center justify-between gap-4 border-t border-slate-200 pt-4">
+                <p className="text-[15px] text-slate-600">Total today</p>
+                <p className="text-right text-base font-bold tabular-nums text-[#0b0f4a]">{formatPeso(paymentTracking.sales)}</p>
+              </li>
+            </ul>
+          )}
         </ChartCard>
 
         <ChartCard
-          title="Payment tracking"
-          subtitle="Today's bookings · verified collections to date"
-          className="h-full min-w-0"
-          rightAction={!dailySalesLoadError && hasPaymentActivity ? <span className={`inline-flex items-center rounded-full border px-3 py-1 text-[10px] font-bold uppercase tracking-wide whitespace-nowrap ${paymentStatus.className}`}>{paymentStatus.label}</span> : undefined}
+          title="Jobs running by hour"
+          subtitle={jobsSubtitle}
+          className="min-w-0"
+          rightAction={!bookingLoadError && chartData.length > 0 ? (
+            <span
+              className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600"
+              title={`Each job is counted as ${DAILY_JOB_HOURS} hours from its start time.${jobsByHour.unscheduled > 0 ? ` ${jobsByHour.unscheduled} without a start time not shown.` : ''}`}
+            >
+              <Info size={14} aria-hidden="true" />
+              {DAILY_JOB_HOURS} hrs per job
+              <span className="sr-only">. Each job is counted as {DAILY_JOB_HOURS} hours from its start time.{jobsByHour.unscheduled > 0 ? ` ${jobsByHour.unscheduled} without a start time not shown.` : ''}</span>
+            </span>
+          ) : undefined}
         >
-          <div className="space-y-5">
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-              <div className="rounded-xl bg-slate-50 p-3"><p className="text-xs font-medium text-slate-500">Sales</p><p className="mt-1 text-lg font-bold tabular-nums text-[#0b0f4a]">{bookingLoadError ? 'Unavailable' : formatPeso(paymentTracking.sales)}</p><p className="mt-0.5 text-xs text-slate-500">Active booking value</p></div>
-              <div className="rounded-xl bg-emerald-50/70 p-3"><p className="text-xs font-medium text-emerald-800">Collected</p><p className="mt-1 text-lg font-bold tabular-nums text-emerald-900">{dailySalesLoadError ? 'Unavailable' : formatPeso(paymentTracking.collected)}</p><p className="mt-0.5 text-xs text-emerald-800">Verified, net of refunds</p></div>
-              <div className="rounded-xl bg-amber-50/80 p-3"><p className="text-xs font-medium text-amber-800">Outstanding</p><p className="mt-1 text-lg font-bold tabular-nums text-amber-900">{dailySalesLoadError ? 'Unavailable' : formatPeso(paymentTracking.outstanding)}</p><p className="mt-0.5 text-xs text-amber-800">Sales less collected</p></div>
+          {bookingLoadError ? (
+            <p role="alert" className="text-sm text-red-700">Booking data could not be loaded.</p>
+          ) : chartData.length === 0 ? (
+            <EmptyPanel title="Nothing on the clock yet" detail={jobsByHour.unscheduled > 0 ? `${jobsByHour.unscheduled} ${jobsByHour.unscheduled === 1 ? 'booking has' : 'bookings have'} no start time.` : 'Timed bookings for today will show here.'} />
+          ) : (
+            <>
+              {/* Legend sits directly under the "Peak of …" subtitle. */}
+              <div className="-mt-1 mb-3 flex flex-wrap gap-x-6 gap-y-1.5 text-sm text-slate-700">
+                <span className="inline-flex items-center gap-2"><span className="h-3 w-3 rounded-sm bg-[#1a1f6e]" aria-hidden="true" />Within available trucks</span>
+                <span className="inline-flex items-center gap-2"><span className="h-3 w-3 rounded-sm bg-red-600" aria-hidden="true" />More jobs than trucks</span>
+              </div>
+              <div role="img" aria-label={`Jobs running each hour today, peaking at ${jobsByHour.peak}, against ${freeTrucks} available trucks`}>
+                <ResponsiveContainer width="100%" height={270}>
+                  <BarChart data={chartData} margin={{ top: 22, right: 12, left: -8, bottom: 4 }}>
+                    <CartesianGrid stroke="#e2e8f0" vertical={false} />
+                    <XAxis dataKey="label" interval="preserveStartEnd" minTickGap={10} tick={{ fontSize: 13, fill: '#334155' }} tickMargin={8} tickLine={false} axisLine={{ stroke: '#e2e8f0' }} />
+                    <YAxis allowDecimals={false} domain={[0, Math.max(jobsByHour.peak, freeTrucks) + 1]} tick={{ fontSize: 13, fill: '#334155' }} tickLine={false} axisLine={false} width={36} />
+                    <Tooltip
+                      cursor={{ fill: '#f1f5f9' }}
+                      formatter={(value: number) => [`${value} ${value === 1 ? 'job' : 'jobs'}`, 'Running']}
+                      contentStyle={{ borderRadius: '0.75rem', border: '1px solid #e2e8f0', fontSize: 14, color: '#1e293b', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                    />
+                    {!vehicleLoadError && <ReferenceLine y={freeTrucks} stroke="#d4a72c" strokeDasharray="5 4" strokeWidth={2} label={{ value: `${freeTrucks} ${freeTrucks === 1 ? 'truck' : 'trucks'}`, position: 'insideTopRight', fill: '#854d0e', fontSize: 13, fontWeight: 600 }} />}
+                    <Bar dataKey="jobs" radius={[4, 4, 0, 0]} maxBarSize={22}>
+                      {chartData.map((entry) => <Cell key={entry.hour} fill={entry.over && !vehicleLoadError ? '#dc2626' : '#1a1f6e'} />)}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </>
+          )}
+        </ChartCard>
+      </div>
+
+      <div className="grid min-w-0 grid-cols-1 items-stretch gap-5 lg:grid-cols-2">
+        <ChartCard
+          title="Needs attention"
+          subtitle="What blocks today's jobs and payments"
+          className="min-w-0"
+          rightAction={!bookingLoadError && dailyKpis.pendingPlotting > 0 ? (
+            <Link to="/admin/scheduling" className="inline-flex h-10 items-center rounded-xl bg-[#1a1f6e] px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-[#0b0f4a] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0b0f4a]/30">Plot now</Link>
+          ) : undefined}
+        >
+          {attention.length === 0 ? (
+            <EmptyPanel tone="good" title="Nothing blocking today" detail="Every booking is assigned and paid, or there's nothing scheduled." />
+          ) : (
+            <ul className="space-y-3">
+              {attention.map((item) => (
+                <li key={item.key} className="flex items-center gap-4 rounded-xl border border-slate-200 bg-white px-4 py-3">
+                  <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${toneClasses[item.tone]}`}><item.icon size={18} aria-hidden="true" /></span>
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-[#0b0f4a]">{item.title}</p>
+                    <p className="text-sm text-slate-600">{item.detail}</p>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </ChartCard>
+
+        <ChartCard
+          title="Collections"
+          subtitle="Verified payments for today's bookings"
+          className="min-w-0"
+          rightAction={!kpisUnavailable && paymentTracking.sales > 0 ? <span className={`inline-flex items-center whitespace-nowrap rounded-full border px-3 py-1 text-xs font-bold uppercase tracking-wide ${paymentStatus.className}`}>{paymentStatus.label}</span> : undefined}
+        >
+          {kpisUnavailable ? (
+            <p role="alert" className="text-sm text-red-700">Verified payment records could not be loaded, so collected and outstanding totals are unavailable.</p>
+          ) : (
+            <div className="space-y-4">
+              <div role="img" aria-label={`Collected ${formatPeso(paymentTracking.collected)}, outstanding ${formatPeso(paymentTracking.outstanding)}`} className="flex h-3 w-full overflow-hidden rounded-full bg-[#eef0f6]">
+                <span className="h-full bg-emerald-500" style={{ width: `${collectedShare}%` }} />
+                <span className="h-full bg-amber-400" style={{ width: paymentTracking.sales > 0 ? `${100 - collectedShare}%` : '0%' }} />
+              </div>
+              <div className="flex flex-wrap justify-between gap-x-6 gap-y-1 text-sm">
+                <span className="inline-flex items-center gap-2 text-slate-700"><span className="h-2.5 w-2.5 rounded-full bg-emerald-500" aria-hidden="true" />Collected <span className="font-semibold tabular-nums">{formatPeso(paymentTracking.collected)}</span></span>
+                <span className="inline-flex items-center gap-2 text-slate-700"><span className="h-2.5 w-2.5 rounded-full bg-amber-400" aria-hidden="true" />Outstanding <span className="font-semibold tabular-nums">{formatPeso(paymentTracking.outstanding)}</span></span>
+              </div>
+              <div className="border-t border-slate-100 pt-4">
+                <p className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-600">Collected by method</p>
+                {methodRows.length === 0 ? (
+                  <div className="rounded-xl border border-dashed border-slate-300 px-4 py-5 text-center">
+                    <p className="text-sm font-semibold text-[#0b0f4a]">No payments collected yet</p>
+                    <p className="mt-1 text-sm text-slate-600">Cash, BDO, GCash, and Xendit payments will be listed here once verified.</p>
+                  </div>
+                ) : (
+                  <ul className="space-y-2.5">
+                    {methodRows.map((row) => (
+                      <li key={row.label} className="flex items-center justify-between gap-3 text-sm">
+                        <span className="inline-flex items-center gap-2 text-slate-600"><span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: row.color }} aria-hidden="true" />{row.label}</span>
+                        <span className="inline-flex items-center gap-4"><span className="font-semibold tabular-nums text-slate-800">{formatPeso(row.amount)}</span><span className="w-12 text-right text-sm tabular-nums text-slate-600">{Math.round((row.amount / paymentTracking.collected) * 100)}%</span></span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
             </div>
-            {!dailySalesLoadError && <>
-              <div role="img" aria-label={`Today's collected payments ${formatPeso(paymentTracking.collected)} and outstanding balance ${formatPeso(paymentTracking.outstanding)}`} className="flex h-2.5 w-full overflow-hidden rounded-full bg-[#eef0f6]">
-                <span className="h-full bg-emerald-500" style={{ width: paymentTotal > 0 ? `${(paymentTracking.collected / paymentTotal) * 100}%` : '0%' }} />
-                <span className="h-full bg-amber-400" style={{ width: paymentTotal > 0 ? `${(paymentTracking.outstanding / paymentTotal) * 100}%` : '0%' }} />
-              </div>
-              <div className="border-t border-slate-100 pt-3">
-                <p className="mb-2 text-xs font-medium uppercase tracking-wider text-slate-500">Collected by method</p>
-                <div className="space-y-2">
-                  {methodRows.map((row) => (
-                    <div key={row.label} className="flex items-center justify-between gap-3 text-sm">
-                      <span className="inline-flex items-center gap-2 text-slate-600"><span className="h-2 w-2 rounded-full" style={{ backgroundColor: row.color }} aria-hidden="true" />{row.label}</span>
-                      <span className="inline-flex items-center gap-4"><span className={'font-semibold tabular-nums ' + (row.amount === 0 ? 'text-slate-400' : 'text-slate-700')}>{formatPeso(row.amount)}</span><span className="w-10 text-right text-xs tabular-nums text-slate-500">{paymentTracking.collected > 0 ? `${Math.round((row.amount / paymentTracking.collected) * 100)}%` : '0%'}</span></span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-              {!hasPaymentActivity && <p className="text-sm text-slate-400">No sales or verified payments recorded today.</p>}
-            </>}
-            {dailySalesLoadError && <p role="alert" className="text-sm text-red-700">Verified payment records could not be loaded, so collected and outstanding totals are unavailable.</p>}
-          </div>
+          )}
         </ChartCard>
       </div>
 
       <section className="overflow-hidden rounded-2xl border border-slate-200/70 bg-white shadow-sm">
         <div className="flex flex-col justify-between gap-3 border-b border-slate-200 px-5 py-4 sm:flex-row sm:items-center">
           <div>
-            <h3 className="text-base font-semibold text-slate-900">Recent bookings</h3>
-            <p className="mt-0.5 text-sm text-slate-500">Bookings received today</p>
+            <h3 className="text-lg font-bold text-slate-900">Today's bookings</h3>
+            <p className="mt-0.5 text-sm text-slate-500">Scheduled for {reportDateLabel}</p>
           </div>
           <Link to="/admin/booking" className="inline-flex w-fit items-center rounded-full border border-slate-200 bg-slate-50 px-4 py-2 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0b0f4a]/30">View all</Link>
         </div>
         <div className="overflow-x-auto">
           <table className={`${tableClasses} min-w-[760px] table-auto`}>
             <thead className={tableHeadClasses}>
-              <tr>{['Booking No.', 'Client', 'Service', 'Date', 'Status', 'Amount'].map((heading) => <th key={heading} scope="col" className={`${tableHeaderCellClasses} whitespace-nowrap ${heading === 'Amount' ? 'text-right' : ''}`}>{heading}</th>)}</tr>
+              <tr>{['Booking No.', 'Client', 'Service', 'Time', 'Status', 'Amount'].map((heading) => <th key={heading} scope="col" className={`${tableHeaderCellClasses} whitespace-nowrap ${heading === 'Amount' ? 'text-right' : ''}`}>{heading}</th>)}</tr>
             </thead>
             <tbody>
-              {paginatedRecentBookings.map((booking) => (
+              {pagedBookings.map((booking) => (
                 <tr key={booking.id} className={tableRowClasses}>
                   <td className={`${tableCellClasses} whitespace-nowrap font-semibold`}>{booking.bookingNo ?? '-'}</td>
                   <td className={`${tableCellClasses} leading-snug`}>{booking.client}</td>
                   <td className={`${tableCellClasses} leading-snug`}>{booking.service}</td>
-                  <td className={`${tableCellClasses} whitespace-nowrap`}>{booking.date}</td>
-                  <td className={tableCellClasses}><StatusBadge status={booking.status === 'Scheduled' ? 'Assigned' : booking.status} size="xs" variant="outline" /></td>
-                  <td className={`${tableCellClasses} whitespace-nowrap text-right font-semibold tabular-nums`}>{formatPeso(toNumber(booking.amount))}</td>
+                  <td className={`${tableCellClasses} whitespace-nowrap tabular-nums`}>{formatTimeLabel(booking.preferredTime)}</td>
+                  <td className={tableCellClasses}><StatusBadge status={dailyStatusLabel(booking.status)} size="xs" variant="outline" /></td>
+                  <td className={`${tableCellClasses} whitespace-nowrap text-right font-semibold tabular-nums ${normalizeBookingStatus(booking.status) === 'Cancelled' ? 'text-slate-400 line-through' : ''}`}>{formatPeso(toNumber(booking.amount))}</td>
                 </tr>
               ))}
-              {recentBookings.length === 0 && (
+              {todayBookings.length === 0 && (
                 <tr><td colSpan={6} className="border-b border-[#dde4ef] px-4 py-8 text-center text-sm text-[#70747c]">
-                  No bookings received today. New bookings will appear here.
+                  {bookingLoadError ? 'Booking data could not be loaded.' : 'No bookings scheduled today.'}
                 </td></tr>
               )}
             </tbody>
           </table>
         </div>
         <TablePagination
-          page={safeRecentBookingsPage}
-          totalPages={recentBookingsTotalPages}
-          totalItems={recentBookings.length}
-          pageSize={recentBookingsPageSize}
-          onPageChange={setRecentBookingsPage}
-          onPageSizeChange={(size) => { setRecentBookingsPageSize(size); setRecentBookingsPage(1); }}
+          page={safePage}
+          totalPages={totalPages}
+          totalItems={todayBookings.length}
+          pageSize={pageSize}
+          onPageChange={setPage}
+          onPageSizeChange={(size) => { setPageSize(size); setPage(1); }}
         />
       </section>
+    </div>
+  );
+}
+
+function EmptyPanel({ title, detail, tone = 'neutral' }: { title: string; detail: string; tone?: 'neutral' | 'good' }) {
+  return (
+    <div className={`flex min-h-[160px] flex-col items-center justify-center rounded-xl border border-dashed px-4 py-6 text-center ${tone === 'good' ? 'border-emerald-200 bg-emerald-50/40' : 'border-slate-300'}`}>
+      {tone === 'good' && <CheckCircle size={22} className="mb-2 text-emerald-600" aria-hidden="true" />}
+      <p className="text-sm font-semibold text-[#0b0f4a]">{title}</p>
+      <p className="mt-1 max-w-xs text-sm text-slate-600">{detail}</p>
     </div>
   );
 }
@@ -2684,95 +1792,6 @@ function ChartCard({ title, subtitle, children, className = '', rightAction, ico
   );
 }
 
-function StatusBreakdownCard({
-  title,
-  total,
-  centerLabel,
-  items,
-  rightAction,
-  unavailable = false,
-}: {
-  title: string;
-  total: number;
-  centerLabel: string;
-  items: { label: string; color: string; value: number }[];
-  rightAction?: React.ReactNode;
-  unavailable?: boolean;
-}) {
-  const circumference = 2 * Math.PI * 48;
-  let offset = 0;
-  const isJobOrderStatusCard = title === 'Job order status';
-
-  return (
-    <ChartCard title={title} className={isJobOrderStatusCard ? 'flex h-full flex-col min-h-[300px]' : 'min-h-[300px]'} rightAction={rightAction}>
-      <div className="flex min-h-[190px] flex-1 items-center justify-center gap-10">
-        <div className="relative h-40 w-40 shrink-0" role="img" aria-label={`${title}: ${total} ${centerLabel}`}>
-          <svg viewBox="0 0 128 128" className="h-full w-full -rotate-90" aria-hidden="true">
-            <circle cx="64" cy="64" r="48" fill="none" stroke="#e2e8f0" strokeWidth="12" />
-            {total > 0 && items.map((item) => {
-              const segment = (item.value / total) * circumference;
-              const circle = (
-                <circle
-                  key={item.label}
-                  cx="64"
-                  cy="64"
-                  r="48"
-                  fill="none"
-                  stroke={item.color}
-                  strokeWidth="12"
-                  strokeDasharray={`${segment} ${circumference - segment}`}
-                  strokeDashoffset={-offset}
-                />
-              );
-              offset += segment;
-              return circle;
-            })}
-          </svg>
-          <div className="absolute inset-0 flex flex-col items-center justify-center">
-            <span className="text-2xl font-semibold tabular-nums text-slate-900">{unavailable ? '—' : total}</span>
-            <span className="text-sm text-slate-500">{unavailable ? 'unavailable' : centerLabel}</span>
-          </div>
-        </div>
-        <div className="w-64 shrink-0 space-y-3">
-          {items.map((item) => isJobOrderStatusCard ? (
-            <div key={item.label} className="flex items-center justify-between text-sm">
-              <span className="flex min-w-0 items-center gap-2.5">
-                <span className="h-2.5 w-2.5 shrink-0 rounded-sm" style={{ backgroundColor: item.color }} />
-                <span className="truncate text-slate-700">{item.label}</span>
-              </span>
-              <span className="w-8 text-right font-semibold tabular-nums text-slate-900">{unavailable ? '—' : item.value}</span>
-            </div>
-          ) : (
-            <div key={item.label} className="flex items-center gap-2.5 text-sm">
-              <span className="h-2.5 w-2.5 shrink-0 rounded-sm" style={{ backgroundColor: item.color }} />
-              <span className="min-w-0 flex-1 truncate text-slate-700">{item.label}</span>
-              <span className="w-8 text-right font-semibold tabular-nums text-slate-900">{unavailable ? '—' : item.value}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-    </ChartCard>
-  );
-}
-
-function MonthlyRangeSelector({ value, onChange }: { value: 6 | 12 | 24; onChange: (range: 6 | 12 | 24) => void }) {
-  return (
-    <div className="flex rounded-full border border-slate-200 bg-slate-50 p-1" role="group" aria-label="Monthly report range">
-      {([6, 12, 24] as const).map((range) => (
-        <button
-          key={range}
-          type="button"
-          aria-pressed={value === range}
-          onClick={() => onChange(range)}
-          className={`min-w-10 rounded-full px-2.5 py-1 text-xs font-semibold transition-colors ${value === range ? 'bg-[#1a1f6e] text-white shadow-sm' : 'text-slate-600'}`}
-        >
-          {range}M
-        </button>
-      ))}
-    </div>
-  );
-}
-
 function formatFilterDate(value: string, withWeekday = false) {
   const date = new Date(`${value}T00:00:00`);
   return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString('en-PH', { ...(withWeekday ? { weekday: 'short' as const } : {}), month: 'short', day: 'numeric', year: 'numeric' });
@@ -2784,10 +1803,14 @@ function formatFilterMonth(value: string) {
 }
 
 /** Looks like the date field, for tabs where the date is fixed or set elsewhere. */
-function ReadOnlyFilter({ children }: { children: React.ReactNode }) {
+/** Pill-shaped filter chip shared by the Daily, Operational and Monthly report filters. */
+const FILTER_CHIP_CLASSES = 'flex h-12 items-center rounded-full border border-slate-200 bg-white px-5 text-[15px] font-medium text-[#0b0f4a] shadow-none transition hover:border-slate-300 hover:bg-slate-50';
+
+function ReadOnlyFilter({ children, label }: { children: React.ReactNode; label: string }) {
   return (
-    <div className="flex h-10 items-center gap-2.5 truncate rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm text-slate-600">
-      <CalendarDays size={16} className="shrink-0 text-[#1a1f6e]" aria-hidden="true" />
+    <div className={`${FILTER_CHIP_CLASSES} max-w-full gap-2.5 hover:bg-white`} title={label}>
+      <span className="sr-only">{label}: </span>
+      <CalendarDays size={18} className="shrink-0 text-[#0b0f4a]" aria-hidden="true" />
       <span className="truncate">{children}</span>
     </div>
   );
@@ -2817,9 +1840,10 @@ function DateRangeField({
   const formatInput = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 
   return (
-    <div className="relative">
-      <div className="relative">
-        <CalendarDays size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#1a1f6e]" aria-hidden="true" />
+    <div className="relative max-w-full">
+      <div className="relative max-w-full">
+        <CalendarDays size={18} className="pointer-events-none absolute left-5 top-1/2 -translate-y-1/2 text-[#0b0f4a]" aria-hidden="true" />
+        <ChevronDown size={18} className={`pointer-events-none absolute right-5 top-1/2 -translate-y-1/2 text-[#0b0f4a] transition-transform ${open ? 'rotate-180' : ''}`} aria-hidden="true" />
         <input
           id={id}
           type="text"
@@ -2830,7 +1854,8 @@ function DateRangeField({
           aria-labelledby="reports-date-range-label"
           aria-haspopup="dialog"
           aria-expanded={open}
-          className="h-10 w-full cursor-pointer truncate rounded-lg border border-slate-300 bg-white pl-9 pr-3 text-sm text-slate-700 shadow-sm outline-none transition focus-visible:ring-2 focus-visible:ring-[#0b0f4a]/30"
+          size={Math.max(16, (from && to ? `${formatDate(from)} to ${formatDate(to)}` : 'Select date range').length)}
+          className={`${FILTER_CHIP_CLASSES} max-w-full cursor-pointer truncate pl-12 pr-12 outline-none focus-visible:border-[#1a1f6e] focus-visible:ring-2 focus-visible:ring-[#1a1f6e]/15`}
         />
       </div>
       {open && (
@@ -2887,4 +1912,3 @@ function DateRangeField({
     </div>
   );
 }
-

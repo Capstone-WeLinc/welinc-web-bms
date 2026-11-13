@@ -115,6 +115,8 @@ type Props = {
   getCrew: (entry: ScheduleEntry) => ScheduleCrew;
   onView: (entry: ScheduleEntry) => void;
   onAssign: (entry: ScheduleEntry) => void;
+  /** "split" puts the calendar and the day details (on the right) in two separate cards. */
+  layout?: 'combined' | 'split';
 };
 
 const iconButtonClass = 'inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-700 transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1a1f6e]/30';
@@ -142,7 +144,8 @@ function DetailGroup({ title, children }: { title: string; children: ReactNode }
 const readableService = (value: string) => (value === value.toUpperCase() ? value.charAt(0) + value.slice(1).toLowerCase() : value);
 
 /** Month overview with a readable agenda for the selected day. Shared by Admin and Operations. */
-export default function ScheduleCalendar({ schedules, year, month, onMonthChange, canAssign, getCrew, onView, onAssign }: Props) {
+export default function ScheduleCalendar({ schedules, year, month, onMonthChange, canAssign, getCrew, onView, onAssign, layout = 'combined' }: Props) {
+  const split = layout === 'split';
   const today = localDateKey(new Date());
   const monthPrefix = `${year}-${pad2(month + 1)}`;
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
@@ -192,8 +195,7 @@ export default function ScheduleCalendar({ schedules, year, month, onMonthChange
     setSelectedDate(today);
   };
 
-  return (
-    <div>
+  const header = (
       <div className="flex flex-wrap items-center justify-between gap-3 p-4">
         <div className="min-w-0">
           <h2 className="text-xl font-semibold text-[#1a1f6e]">{MONTHS[month]} {year}</h2>
@@ -203,13 +205,14 @@ export default function ScheduleCalendar({ schedules, year, month, onMonthChange
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <button type="button" onClick={goToToday} className={outlineButtonClass}>Today</button>
           <button type="button" aria-label="Previous month" onClick={() => shiftMonth(-1)} className={iconButtonClass}><ChevronLeft size={16} /></button>
+          <button type="button" onClick={goToToday} className={outlineButtonClass}>Today</button>
           <button type="button" aria-label="Next month" onClick={() => shiftMonth(1)} className={iconButtonClass}><ChevronRight size={16} /></button>
         </div>
       </div>
+  );
 
-      <div className="xl:grid xl:grid-cols-[minmax(0,1fr)_380px] xl:items-start">
+  const grid = (
       <div className="min-w-0 px-4 pb-4">
         <div className="overflow-hidden border border-slate-200">
           <div className="grid grid-cols-7 bg-[#1a1f6e]">
@@ -266,8 +269,12 @@ export default function ScheduleCalendar({ schedules, year, month, onMonthChange
           </div>
         </div>
       </div>
+  );
 
-      <section aria-live="polite" className="space-y-3 border-t border-slate-200 bg-[#f1f4fa] p-4 xl:sticky xl:top-4 xl:max-h-[calc(100dvh-2rem)] xl:overflow-y-auto xl:rounded-l-xl xl:border-l xl:border-t-0">
+  const details = (
+      <section aria-live="polite" className={split
+        ? 'order-2 min-w-0 space-y-3 border border-slate-200 bg-white p-4'
+        : 'space-y-3 border-t border-slate-200 bg-[#f1f4fa] p-4 xl:sticky xl:top-4 xl:max-h-[calc(100dvh-2rem)] xl:overflow-y-auto xl:rounded-l-xl xl:border-l xl:border-t-0'}>
         <h3 className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs font-medium uppercase tracking-wider text-[#1a1f6e]">
           <span aria-hidden="true" className="h-4 w-[3px] rounded-full bg-[#e8b800]" />
           {activeHeading}
@@ -355,6 +362,26 @@ export default function ScheduleCalendar({ schedules, year, month, onMonthChange
           );
         })}
       </section>
+  );
+
+  if (split) {
+    return (
+      <div className="flex flex-col gap-4 xl:grid xl:grid-cols-[minmax(0,1fr)_380px] xl:items-start">
+        {details}
+        <div className="order-1 min-w-0 border border-slate-200 bg-white">
+          {header}
+          {grid}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      {header}
+      <div className="xl:grid xl:grid-cols-[minmax(0,1fr)_380px] xl:items-start">
+        {grid}
+        {details}
       </div>
     </div>
   );

@@ -1,6 +1,5 @@
 import ModalHeader from '../../components/ui/ModalHeader';
 import SalesReportDetailsDialog from '../../components/shared/SalesReportDetailsDialog';
-import CollectionEntryPanel from '../../components/finance/CollectionEntryPanel';
 import TablePagination from '../../components/ui/TablePagination';
 import { useEffect, useMemo, useState } from 'react';
 import {
@@ -15,6 +14,8 @@ import {
   FileText,
   Download,
   RotateCcw,
+  Send,
+  CreditCard,
 } from 'lucide-react';
 import { exportReportPdf } from '../../lib/documents/reportExport';
 import { useApp } from '../../contexts/AppContext';
@@ -39,6 +40,26 @@ interface DailySalesSummary {
   totalXendit: string;
   totalSales: string;
 }
+
+type DraftRow = {
+  bookingUuid: string; bookingId: string; bookingNo: string; clientName: string; service: string;
+  completedOn: string; amount: number; method: string | null; reference: string;
+};
+type AwaitingRow = {
+  id: string; bookingId: string; bookingNo: string; clientName: string;
+  amount: number; method: string; reference: string; submittedOn: string;
+};
+type Worklist = { ready: DraftRow[]; awaiting: AwaitingRow[] };
+
+const METHODS = ['Cash', 'BDO', 'GCash', 'Xendit'] as const;
+
+/** One table row: a draft to submit, a collection awaiting Admin approval, or a verified sale. */
+type TableRow =
+  | { kind: 'ready'; key: string; date: string; clientName: string; bookingNo: string; amount: number; method: string | null; reference: string; draft: DraftRow }
+  | { kind: 'awaiting'; key: string; date: string; clientName: string; bookingNo: string; amount: number; method: string; reference: string }
+  | { kind: 'verified'; key: string; entry: DailySalesEntry };
+
+const peso = (value: number) => `₱${value.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 function toNumber(value: string | number | null | undefined): number {
   if (value === null || value === undefined || value === '') return 0;
@@ -107,7 +128,8 @@ export default function CsDailySales() {
   const [rowsPerPage, setRowsPerPage] = useState(8);
   const [viewEntry, setViewEntry] = useState<DailySalesEntry | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [submittedForToday, setSubmittedForToday] = useState(false);
+  const [worklist, setWorklist] = useState<Worklist>({ ready: [], awaiting: [] });
+  const [methodChoices, setMethodChoices] = useState<Record<string, string>>({});
   const [refreshToken, setRefreshToken] = useState(0);
   const [refundEntry, setRefundEntry] = useState<DailySalesEntry | null>(null);
   const [refundAmount, setRefundAmount] = useState('');
@@ -133,14 +155,16 @@ export default function CsDailySales() {
     let mounted = true;
     setLoading(true);
 
-    api.get<DailySalesEntry[]>('/daily-sales?completedOnly=true')
-      .then(async (entriesRes) => {
-        const summaryRes = await api.get<DailySalesSummary>(`/daily-sales/summary?date=${today}&completedOnly=true`);
+    Promise.all([
+      api.get<DailySalesEntry[]>('/daily-sales?completedOnly=true'),
+      api.get<DailySalesSummary>(`/daily-sales/summary?date=${today}&completedOnly=true`),
+      api.get<Worklist>('/daily-sales/drafts'),
+    ])
+      .then(([entriesRes, summaryRes, worklistRes]) => {
         if (mounted) {
           setEntries(entriesRes.data ?? []);
           setSummary(summaryRes.data ?? null);
-          const todayEntries = (entriesRes.data ?? []).filter((entry) => entry.date === today);
-          setSubmittedForToday(todayEntries.length > 0 && todayEntries.every((entry) => (entry as DailySalesEntry & { reportStatus?: string }).reportStatus === 'Submitted'));
+          setWorklist({ ready: worklistRes.data?.ready ?? [], awaiting: worklistRes.data?.awaiting ?? [] });
         }
       })
       .catch(() => {
@@ -148,6 +172,7 @@ export default function CsDailySales() {
           toast.error('Failed to load daily sales reports');
           setEntries([]);
           setSummary(null);
+          setWorklist({ ready: [], awaiting: [] });
         }
       })
       .finally(() => {
@@ -159,34 +184,61 @@ export default function CsDailySales() {
     };
   }, [today, refreshToken]);
 
-  async function submitSalesReport() {
-    const todayEntries = entries.filter((entry) => entry.date === today);
-    if (!todayEntries.length) {
-      toast.error('There are no sales records for today to submit.');
+  const methodFor = (draft: DraftRow) => methodChoices[draft.bookingUuid] || draft.method;
+  const readyToSubmit = worklist.ready.filter((draft) => methodFor(draft));
+  const missingMethod = worklist.ready.length - readyToSubmit.length;
+
+  /** Sends every Daily Sales draft to Collection Approval in one step. */
+  async function submitForApproval() {
+    if (!worklist.ready.length) {
+      toast.error('There are no records to submit.');
+      return;
+    }
+    if (!readyToSubmit.length) {
+      toast.error('Choose a payment method for the records first.', { description: 'Use the row menu to set the method.' });
       return;
     }
     setSubmitting(true);
     try {
-      await api.post(`/daily-sales/submit?date=${today}`);
-      setSubmittedForToday(true);
-      setEntries((current) => current.map((entry) => entry.date === today
-        ? ({ ...entry, reportStatus: 'Submitted' } as DailySalesEntry & { reportStatus: string })
-        : entry));
-      toast.success("Today's sales report was submitted to Admin.");
-    } catch (error) {
-      console.error('Failed to submit daily sales report', error);
-      toast.error('Failed to submit the daily sales report.');
+      const { data } = await api.post<{ submitted: number; skipped: Array<{ bookingNo: string; reason: string }> }>(
+        '/daily-sales/submit-collections',
+        { items: worklist.ready.map((draft) => ({ bookingUuid: draft.bookingUuid, method: methodFor(draft) ?? undefined })) },
+      );
+      if (data.submitted) toast.success(`${data.submitted} ${data.submitted === 1 ? 'record was' : 'records were'} submitted for collection approval.`);
+      if (data.skipped?.length) {
+        toast.warning(`${data.skipped.length} ${data.skipped.length === 1 ? 'record was' : 'records were'} not submitted`, {
+          description: data.skipped.slice(0, 3).map((item) => `${item.bookingNo}: ${item.reason}`).join(' · '),
+        });
+      }
+      setMethodChoices({});
+      setRefreshToken((value) => value + 1);
+    } catch (error: any) {
+      console.error('Failed to submit records for collection approval', error);
+      toast.error(error?.response?.data?.message || 'Failed to submit records for collection approval.');
     } finally {
       setSubmitting(false);
     }
   }
 
-  const totalPages = Math.max(1, Math.ceil(entries.length / rowsPerPage));
+  const rows = useMemo<TableRow[]>(() => [
+    ...worklist.ready.map((draft): TableRow => ({
+      kind: 'ready', key: `ready-${draft.bookingUuid}`, date: draft.completedOn, clientName: draft.clientName,
+      bookingNo: draft.bookingNo, amount: draft.amount, method: methodChoices[draft.bookingUuid] || draft.method,
+      reference: draft.reference, draft,
+    })),
+    ...worklist.awaiting.map((item): TableRow => ({
+      kind: 'awaiting', key: `awaiting-${item.id}`, date: item.submittedOn, clientName: item.clientName,
+      bookingNo: item.bookingNo, amount: item.amount, method: item.method, reference: item.reference,
+    })),
+    ...entries.map((entry): TableRow => ({ kind: 'verified', key: `verified-${entry.id}`, entry })),
+  ], [worklist, entries, methodChoices]);
+
+  const totalPages = Math.max(1, Math.ceil(rows.length / rowsPerPage));
   const safePage = Math.min(currentPage, totalPages);
-  const paginatedEntries = useMemo(() => {
+  const paginatedRows = useMemo(() => {
     const start = (safePage - 1) * rowsPerPage;
-    return entries.slice(start, start + rowsPerPage);
-  }, [entries, safePage, rowsPerPage]);
+    return rows.slice(start, start + rowsPerPage);
+  }, [rows, safePage, rowsPerPage]);
 
   /** Same report PDF as the Admin Reports tabs (Job Order style), in landscape for the sales columns. */
   async function downloadSalesReportPdf() {
@@ -275,30 +327,37 @@ export default function CsDailySales() {
         title="DAILY SALES REPORT"
         subtitle={<>Create and manage daily sales <span className="font-medium text-[#d4a72c]">reports and collections</span>.</>}
         subtitleClassName="mt-1 text-sm text-slate-500"
-        action={<div className="flex flex-col gap-2 sm:items-stretch">
+        action={<div className="flex flex-row gap-2">
           <button
             type="button"
-            onClick={submitSalesReport}
-            disabled={loading || submitting || submittedForToday || entries.filter((entry) => entry.date === today).length === 0}
-            title={submittedForToday ? "Today's report has already been submitted" : 'Submit todayâ€™s report to Admin'}
-            className="inline-flex items-center justify-center rounded-xl bg-[#1a1f6e] px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-[#151b4f] disabled:cursor-not-allowed disabled:opacity-60"
+            onClick={submitForApproval}
+            disabled={loading || submitting || worklist.ready.length === 0}
+            title={submitting ? 'Submitting...' : worklist.ready.length === 0 ? 'No records to submit' : `Submit ${worklist.ready.length} ${worklist.ready.length === 1 ? 'record' : 'records'} for collection approval`}
+            aria-label={submitting ? 'Submitting records for collection approval' : 'Submit records for collection approval'}
+            className="inline-flex h-11 w-11 items-center justify-center rounded-xl bg-[#1a1f6e] text-white transition-colors hover:bg-[#151b4f] disabled:cursor-not-allowed disabled:opacity-60"
           >
-            <FileText className="w-4 h-4 mr-2" />
-            {submitting ? 'Submitting...' : submittedForToday ? 'Sales Report Submitted' : 'Submit Sales Report'}
+            <Send className="h-5 w-5" aria-hidden="true" />
           </button>
           <button
             type="button"
             onClick={downloadSalesReportPdf}
             disabled={loading || entries.length === 0}
-            className="inline-flex items-center justify-center rounded-xl bg-[#d4a72c] px-6 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#bc9221] disabled:cursor-not-allowed disabled:opacity-50"
+            title="Download PDF"
+            aria-label="Download PDF"
+            className="inline-flex h-11 w-11 items-center justify-center rounded-xl bg-[#d4a72c] text-white shadow-sm transition-colors hover:bg-[#bc9221] disabled:cursor-not-allowed disabled:opacity-50"
           >
-            <Download className="mr-2 h-4 w-4" />
-            Download PDF
+            <Download className="h-5 w-5" aria-hidden="true" />
           </button>
         </div>}
       />
 
-      <CollectionEntryPanel onCreated={() => setRefreshToken((value) => value + 1)} />
+      {!loading && worklist.ready.length > 0 && (
+        <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
+          <span className="font-semibold">{worklist.ready.length} {worklist.ready.length === 1 ? 'record is' : 'records are'} ready to submit.</span>{' '}
+          Review them below, then use the Submit button to send them for collection approval.
+          {missingMethod > 0 && <> {missingMethod} {missingMethod === 1 ? 'record needs' : 'records need'} a payment method — set it from the row menu.</>}
+        </div>
+      )}
 
       {/* Summary */}
       <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm p-5">
@@ -353,16 +412,53 @@ export default function CsDailySales() {
                     Loading daily sales reports...
                   </td>
                 </tr>
-              ) : paginatedEntries.length === 0 ? (
+              ) : paginatedRows.length === 0 ? (
                 <tr>
                   <td colSpan={10} className="px-4 py-12 text-center text-slate-400">
-                    No daily sales reports found.
+                    No daily sales records yet. Verified Post-Service records will appear here.
                   </td>
                 </tr>
               ) : (
-                paginatedEntries.map((entry) => (
+                paginatedRows.map((row) => {
+                  const cell = 'px-4 py-2.5 text-slate-900 dark:text-slate-300 whitespace-nowrap';
+                  if (row.kind !== 'verified') {
+                    const methodCell = (name: string) => <td key={name} className={cell}>{row.method === name ? peso(row.amount) : '-'}</td>;
+                    return (
+                      <tr key={row.key} className="hover:bg-slate-50 dark:hover:bg-slate-900/50 transition-colors">
+                        <td className={cell}>{row.date}</td>
+                        <td className="px-4 py-2.5">
+                          <p className="font-semibold text-slate-900 dark:text-white">{row.clientName}</p>
+                          <p className="text-sm text-slate-500 dark:text-slate-400">{row.bookingNo || '-'}</p>
+                        </td>
+                        <td className="px-4 py-2.5 font-semibold text-slate-900 dark:text-white whitespace-nowrap">{peso(row.amount)}</td>
+                        {METHODS.map(methodCell)}
+                        <td className={cell}>{row.kind === 'ready' && !row.method ? <span className="text-amber-700">Method needed</span> : '-'}</td>
+                        <td className={cell}>{row.reference}</td>
+                        <td className="px-4 py-2.5">
+                          {row.kind === 'ready' ? (
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <button type="button" aria-label={`Actions for ${row.bookingNo}`} className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
+                                  <MoreVertical className="w-4 h-4 text-slate-600 dark:text-slate-400" />
+                                </button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                {METHODS.map((name) => (
+                                  <DropdownMenuItem key={name} onClick={() => setMethodChoices((current) => ({ ...current, [row.draft.bookingUuid]: name }))}>
+                                    <CreditCard className="mr-2 h-4 w-4" />Paid by {name}{row.method === name ? ' ✓' : ''}
+                                  </DropdownMenuItem>
+                                ))}
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          ) : <span className="px-2 text-slate-400">-</span>}
+                        </td>
+                      </tr>
+                    );
+                  }
+                  const entry = row.entry;
+                  return (
                   <tr
-                    key={entry.id}
+                    key={row.key}
                     className="hover:bg-slate-50 dark:hover:bg-slate-900/50 transition-colors"
                   >
                     <td className="px-4 py-2.5 text-slate-900 dark:text-slate-300 whitespace-nowrap">
@@ -415,14 +511,15 @@ export default function CsDailySales() {
                       </DropdownMenu>
                     </td>
                   </tr>
-                ))
+                  );
+                })
               )}
             </tbody>
           </table>
         </div>
 
         {/* Pagination */}
-        <TablePagination page={safePage} totalPages={totalPages} totalItems={entries.length} pageSize={rowsPerPage} onPageChange={setCurrentPage} onPageSizeChange={size => { setRowsPerPage(size); setCurrentPage(1); }} />
+        <TablePagination page={safePage} totalPages={totalPages} totalItems={rows.length} pageSize={rowsPerPage} onPageChange={setCurrentPage} onPageSizeChange={size => { setRowsPerPage(size); setCurrentPage(1); }} />
       </div>
 
       <ViewDialog entry={viewEntry} open={!!viewEntry} onClose={() => setViewEntry(null)} />

@@ -1,21 +1,18 @@
+import { StatusFilter } from '../../components/ui/ListSearchFilters';
 import PageHeader from '../../components/pageheader/Pageheader';
 import { type ReactNode, useEffect, useState } from 'react';
-import { AlertCircle, BusFront, CalendarDays, CheckCircle2, ChevronDown, Contact, Eye, MapPinned, MoreVertical, Search, Trash2, Truck, User, UserCheck, UserRoundX, Users, Wrench } from 'lucide-react';
+import { AlertCircle, BusFront, CalendarDays, CheckCircle2, ChevronDown, Contact, Eye, MapPinned, MoreVertical, Pencil, Search, Trash2, Truck, User, UserCheck, UserRoundX, Users } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { toast } from 'sonner';
+import CrewEditDialog from '../../components/availability/CrewEditDialog';
+import type { CrewMember, CrewRole } from '../../lib/api/crewService';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '../../components/ui/Dropdown';
 import DeleteConfirmModal from '../../components/shared/DeleteConfirmModal';
 import ModalHeader from '../../components/ui/ModalHeader';
-import KPICard from '../../components/shared/KpiCard';
 import { api } from '../../lib/api';
 import { formatPhoneLocal } from '../../lib/phone';
 import type { CrewStatus, Driver, Helper, Vehicle, VehicleStatus } from '../../lib/types';
 import { Dialog, DialogContent } from '../../components/ui/Dialog';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '../../components/ui/Dropdown';
 
 type ActiveTab = 'vehicles' | 'drivers' | 'helpers';
 
@@ -167,6 +164,7 @@ function getDisplayVehicleStatus(vehicle: Vehicle): DisplayVehicleStatus {
 }
 
 export default function VehicleAvailability({ canManage = true }: { canManage?: boolean }) {
+  const [editTarget, setEditTarget] = useState<{ role: CrewRole; id: string } | null>(null);
   const [vehicles, setVehicles] = useState<VehicleAvailabilityRecord[]>([]);
   const [vehiclesLoading, setVehiclesLoading] = useState(true);
   const [vehiclesError, setVehiclesError] = useState(false);
@@ -276,10 +274,6 @@ export default function VehicleAvailability({ canManage = true }: { canManage?: 
 
   const filtered = activeTab === 'vehicles' ? filteredVehicles : activeTab === 'drivers' ? filteredDrivers : filteredHelpers;
 
-  // Totals always describe the whole tab, so they stay put while searching or filtering.
-  const countVehicles = (...statuses: DisplayVehicleStatus[]) => vehicles.filter(vehicle => statuses.includes(getDisplayVehicleStatus(vehicle))).length;
-  const crewRecords: Array<Driver | Helper> = activeTab === 'helpers' ? helpers : drivers;
-  const countCrew = (status: CrewStatus) => crewRecords.filter(member => displayHelperStatus(member.status) === status).length;
   const paginated = filtered.slice(0, visibleCount);
   const remaining = filtered.length - paginated.length;
 
@@ -292,6 +286,27 @@ export default function VehicleAvailability({ canManage = true }: { canManage?: 
     setActiveTab(tab);
     setSearch('');
     setStatusFilter('All');
+  }
+
+  /** Show a saved edit on the card straight away, without reloading the tab. */
+  function applyCrewUpdate(member: CrewMember) {
+    const shared = {
+      fullName: member.fullName,
+      initials: getInitials(member.fullName),
+      contact: member.contact,
+      email: member.email,
+      status: member.status,
+      joinDate: member.joinDate,
+      emergencyName: member.emergencyName,
+      emergencyContact: member.emergencyContact,
+    };
+    if (member.role === 'DRIVER') {
+      setDrivers(prev => prev.map(driver => driver.id === member.id
+        ? { ...driver, ...shared, licenseNo: member.licenseNo, licenseType: member.licenseType, licenseExpiry: member.licenseExpiry }
+        : driver));
+    } else {
+      setHelpers(prev => prev.map(helper => (helper.id === member.id ? { ...helper, ...shared } : helper)));
+    }
   }
 
   async function softDeleteDriver() {
@@ -321,58 +336,27 @@ export default function VehicleAvailability({ canManage = true }: { canManage?: 
         subtitleClassName="mt-1 text-sm text-slate-500"
       />
 
-      {/* Tabs and controls */}
-      <div className="space-y-6">
-        {/* Tabs */}
+      {/* Tabs and search, laid out like Services Offered */}
+      <section className="space-y-6">
         <div className="inline-flex rounded-2xl border border-slate-200 bg-slate-100 p-1.5">
-          <TabButton active={activeTab === 'vehicles'} label="Vehicles" onClick={() => handleTabChange('vehicles')} />
-          <TabButton active={activeTab === 'drivers'} label="Drivers" onClick={() => handleTabChange('drivers')} />
-          <TabButton active={activeTab === 'helpers'} label="Helpers" onClick={() => handleTabChange('helpers')} />
+          <TabButton active={activeTab === 'vehicles'} icon={<Truck size={17} />} label="Vehicles" onClick={() => handleTabChange('vehicles')} />
+          <TabButton active={activeTab === 'drivers'} icon={<Contact size={17} />} label="Drivers" onClick={() => handleTabChange('drivers')} />
+          <TabButton active={activeTab === 'helpers'} icon={<Users size={17} />} label="Helpers" onClick={() => handleTabChange('helpers')} />
         </div>
-
-        {/* Totals */}
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          {activeTab === 'vehicles' ? <>
-            <KPICard label="Total Vehicles" value={vehicles.length} icon={Truck} iconColor="#1a1f6e" variant="dashboard-compact" />
-            <KPICard label="Available" value={countVehicles('Available')} icon={CheckCircle2} iconColor="#10b981" variant="dashboard-compact" />
-            <KPICard label="Assigned" value={countVehicles('Assigned')} icon={UserCheck} iconColor="#0ea5e9" variant="dashboard-compact" />
-            <KPICard label="Under Maintenance or Repair" value={countVehicles('Under Maintenance', 'Under Repair')} icon={Wrench} iconColor="#f59e0b" variant="dashboard-compact" />
-          </> : <>
-            <KPICard label={activeTab === 'drivers' ? 'Total Drivers' : 'Total Helpers'} value={crewRecords.length} icon={Users} iconColor="#1a1f6e" variant="dashboard-compact" />
-            <KPICard label="Available" value={countCrew('Available')} icon={CheckCircle2} iconColor="#10b981" variant="dashboard-compact" />
-            <KPICard label="On Duty" value={countCrew('On Duty')} icon={Truck} iconColor="#0ea5e9" variant="dashboard-compact" />
-            <KPICard label="On Leave" value={countCrew('On Leave')} icon={CalendarDays} iconColor="#a855f7" variant="dashboard-compact" />
-          </>}
-        </div>
-
-        {/* Toolbar */}
-        <div className="flex flex-col items-start justify-between gap-4 lg:flex-row lg:items-center">
-          <div className="relative w-full lg:max-w-md">
-            <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+        <div className="flex flex-col items-start justify-between gap-3 lg:flex-row lg:items-center">
+          <label className="relative block w-full lg:max-w-md">
+            <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" aria-hidden="true" />
             <input
               value={search}
               onChange={e => setSearch(e.target.value)}
               placeholder={searchPlaceholder}
-              className="w-full pl-10 pr-4 py-2.5 text-sm border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-[#0a0f2e]/20 placeholder:text-slate-400"
+              aria-label={searchPlaceholder}
+              className="w-full rounded-lg border border-slate-200 bg-white py-2.5 pl-10 pr-4 text-sm outline-none focus:ring-2 focus:ring-[#0a0f2e]/20"
             />
-          </div>
-          <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center w-full lg:w-auto">
-            <div className="flex gap-2 flex-wrap items-center">
-              {activeFilters.map(status => (
-                <button
-                  key={status}
-                  type="button"
-                  onClick={() => setStatusFilter(status)}
-                  className={`px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide rounded-lg whitespace-nowrap cursor-pointer transition-colors border ${statusFilter === status ? 'bg-[#1a1f6e] text-white border-[#1a1f6e]' : 'bg-white text-slate-600 border-slate-200'}`}
-                >
-                  {status}
-                </button>
-              ))}
-            </div>
-          </div>
+          </label>
+          <StatusFilter options={activeFilters as string[]} value={statusFilter} onChange={setStatusFilter} />
         </div>
-
-      </div>
+      </section>
 
       {/* Availability table */}
       <div>
@@ -394,6 +378,7 @@ export default function VehicleAvailability({ canManage = true }: { canManage?: 
               drivers={paginated as Driver[]}
               truckFor={driver => vehicles.find(vehicle => vehicle.driver?.id === driver.id) ?? null}
               onView={setViewDriver}
+              onEdit={driver => setEditTarget({ role: 'DRIVER', id: driver.id })}
               onDelete={setDeleteDriver}
               canManage={canManage}
             />
@@ -401,7 +386,9 @@ export default function VehicleAvailability({ canManage = true }: { canManage?: 
           {activeTab === 'helpers' && (
             <HelperGrid
               helpers={paginated as Helper[]}
+              truckFor={helper => vehicles.find(vehicle => vehicle.helpers?.some(member => member.id === helper.id)) ?? null}
               onView={setViewHelper}
+              onEdit={helper => setEditTarget({ role: 'HELPER', id: helper.id })}
               onDelete={setDeleteHelper}
               canManage={canManage}
             />
@@ -429,6 +416,7 @@ export default function VehicleAvailability({ canManage = true }: { canManage?: 
       <VehicleDetails vehicle={viewVehicle} onClose={() => setViewVehicle(null)} />
       <DriverDetails driver={viewDriver} onClose={() => setViewDriver(null)} />
       <HelperDetails helper={viewHelper} onClose={() => setViewHelper(null)} />
+      <CrewEditDialog target={editTarget} onClose={() => setEditTarget(null)} onSaved={applyCrewUpdate} />
 
       <DeleteDialog
         title="Delete Driver"
@@ -448,10 +436,12 @@ export default function VehicleAvailability({ canManage = true }: { canManage?: 
 
 function TabButton({
   active,
+  icon,
   label,
   onClick,
 }: {
   active: boolean;
+  icon: ReactNode;
   label: string;
   onClick: () => void;
 }) {
@@ -459,12 +449,108 @@ function TabButton({
     <button
       type="button"
       onClick={onClick}
-      className={`rounded-xl px-4 py-2 text-sm font-semibold transition-all sm:px-6 ${active ? 'bg-[#1a1f6e] text-white shadow-sm' : 'text-slate-600'}`}
+      className={`flex h-10 items-center gap-1.5 rounded-xl px-4 py-2 text-sm font-semibold transition-all ${active ? 'bg-[#1a1f6e] text-white shadow-sm' : 'text-slate-600'}`}
     >
+      {icon}
       {label}
     </button>
   );
 }
+
+const CARD_GRID = 'grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3';
+
+/** Status pill in the same shape as the Active/Inactive pill on Services Offered. */
+const STATUS_PILL: Record<DisplayVehicleStatus | CrewStatus, string> = {
+  Available: 'border-emerald-300 bg-emerald-50 text-emerald-700',
+  Assigned: 'border-sky-300 bg-sky-50 text-sky-700',
+  'On Duty': 'border-sky-300 bg-sky-50 text-sky-700',
+  'Under Maintenance': 'border-amber-300 bg-amber-50 text-amber-700',
+  'Under Repair': 'border-rose-300 bg-rose-50 text-rose-700',
+  'Off Duty': 'border-rose-300 bg-rose-50 text-rose-700',
+  'On Leave': 'border-purple-300 bg-purple-50 text-purple-700',
+};
+
+function StatusPill({ status }: { status: DisplayVehicleStatus | CrewStatus }) {
+  return <span className={`whitespace-nowrap rounded-full border px-2.5 py-0.5 text-xs font-medium uppercase tracking-wide ${STATUS_PILL[status]}`}>{status}</span>;
+}
+
+type CardDetail = { label: string; value: ReactNode; muted?: boolean };
+
+/** Services Offered card style: header (icon, name, status), labelled details, then the actions. */
+function AvailabilityCard({ badge, title, status, subtitle, details, onView, onEdit, onDelete }: {
+  badge: ReactNode;
+  title: string;
+  status: DisplayVehicleStatus | CrewStatus;
+  subtitle: string;
+  details: CardDetail[];
+  onView: () => void;
+  onEdit?: () => void;
+  onDelete?: () => void;
+}) {
+  return (
+    <article tabIndex={0} className="group flex flex-col rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition-all duration-150 hover:-translate-y-0.5 hover:border-[#1a1f6e] hover:shadow-lg hover:shadow-[#1a1f6e]/15 focus-visible:-translate-y-0.5 focus-visible:border-[#1a1f6e] focus-visible:shadow-lg focus-visible:shadow-[#1a1f6e]/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1a1f6e]/20">
+      <div className="flex min-w-0 items-start gap-3">
+        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#eef0fa] text-sm font-semibold text-[#1a1f6e] transition-colors group-hover:bg-[#1a1f6e] group-hover:text-[#e8b800] group-focus-visible:bg-[#1a1f6e] group-focus-visible:text-[#e8b800]">
+          {badge}
+        </span>
+        <div className="min-w-0 flex-1">
+          <h3 className="break-words text-base font-medium text-slate-900">{title}</h3>
+          <p className="mt-0.5 break-words text-sm text-slate-600">{subtitle}</p>
+        </div>
+        <StatusPill status={status} />
+        <CardActions title={title} onView={onView} onEdit={onEdit} onDelete={onDelete} />
+      </div>
+
+      <dl className="mt-4 flex-1 space-y-1.5 border-t border-slate-100 pt-3">
+        {details.map(detail => (
+          <div key={detail.label} className="grid grid-cols-[84px_minmax(0,1fr)] gap-3 text-sm">
+            <dt className="text-slate-500">{detail.label}</dt>
+            <dd className={`min-w-0 break-words ${detail.muted ? 'text-slate-400' : 'font-medium text-slate-900'}`}>{detail.value}</dd>
+          </div>
+        ))}
+      </dl>
+
+    </article>
+  );
+}
+
+/** Every card's actions grouped under one ellipsis, in the same menu style as User Management. */
+function CardActions({ title, onView, onEdit, onDelete }: { title: string; onView: () => void; onEdit?: () => void; onDelete?: () => void }) {
+  const item = 'flex cursor-pointer items-center gap-3 rounded-none px-4 py-2.5 text-sm text-[#344158] focus:bg-[#f8fafc]';
+  // A single action is shown as its own icon; the ellipsis is only for two or more.
+  if (!onEdit && !onDelete) {
+    return (
+      <button type="button" onClick={onView} aria-label={`View ${title}`} title="View details" className="-mr-2 -mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[#070b45] transition hover:bg-[#f1f5f9] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1a1f6e]/30">
+        <Eye size={18} strokeWidth={2.2} aria-hidden="true" />
+      </button>
+    );
+  }
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button type="button" aria-label={`Actions for ${title}`} className="-mr-2 -mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[#070b45] transition hover:bg-[#f1f5f9] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1a1f6e]/30">
+          <MoreVertical size={18} strokeWidth={2.4} aria-hidden="true" />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-40 min-w-0 overflow-hidden rounded-xl border border-[#dce3ed] bg-white p-0 py-1.5 shadow-[0_10px_24px_rgba(15,23,42,0.22)]">
+        <DropdownMenuItem onClick={onView} className={item}><Eye className="h-4 w-4" aria-hidden="true" /> View</DropdownMenuItem>
+        {onEdit && <DropdownMenuItem onClick={onEdit} className={item}><Pencil className="h-4 w-4" aria-hidden="true" /> Edit</DropdownMenuItem>}
+        {onDelete && <DropdownMenuItem onClick={onDelete} className="flex cursor-pointer items-center gap-3 rounded-none px-4 py-2.5 text-sm text-[#ff4040] focus:bg-[#fff1f1] focus:text-[#ff4040]"><Trash2 className="h-4 w-4" aria-hidden="true" /> Delete</DropdownMenuItem>}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+function EmptyCards({ message }: { message: string }) {
+  return (
+    <div className="flex min-h-48 flex-col items-center justify-center rounded-2xl border border-slate-200 bg-white px-5 text-center">
+      <Search size={22} className="mb-2 text-slate-400" aria-hidden="true" />
+      <p className="text-sm text-slate-600">{message}</p>
+    </div>
+  );
+}
+
+const notRecorded = (value?: string | null, empty = 'Not recorded'): CardDetail['value'] => value || empty;
 
 function VehicleGrid({
   vehicles,
@@ -473,73 +559,42 @@ function VehicleGrid({
   vehicles: VehicleAvailabilityRecord[];
   onView: (vehicle: VehicleAvailabilityRecord) => void;
 }) {
-  if (!vehicles.length) return <div className="flex min-h-64 flex-col items-center justify-center rounded-2xl border border-slate-200/70 bg-white text-center shadow-sm">
-    <Truck className="mb-3 h-9 w-9 text-slate-400" aria-hidden="true" />
-    <p className="text-base font-medium text-slate-800">No vehicles found</p>
-    <p className="mt-1 text-sm text-slate-500">Try another status or search term.</p>
-  </div>;
-
+  if (!vehicles.length) return <EmptyCards message="No vehicles found. Try another status or search term." />;
   return (
-    <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 xl:grid-cols-3">
-      {vehicles.map(vehicle => <VehicleAvailabilityCard key={vehicle.id} vehicle={vehicle} status={getDisplayVehicleStatus(vehicle)} onView={onView} />)}
-    </div>
-  );
-}
-
-function VehicleAvailabilityCard({ vehicle, status, onView }: {
-  vehicle: VehicleAvailabilityRecord;
-  status: DisplayVehicleStatus;
-  onView: (vehicle: VehicleAvailabilityRecord) => void;
-}) {
-  const isVan = /van|l300/i.test(vehicle.truckTypeId || vehicle.type || '');
-  const VehicleIcon = isVan ? BusFront : Truck;
-  const capacity = vehicle.capacityKg != null ? `${vehicle.capacityKg.toLocaleString()} kg` : vehicle.capacity || '';
-  const showCrew = status === 'Assigned' && (vehicle.driver || vehicle.helpers?.length);
-  const vehicleModel = fullVehicleModel(vehicle);
-  const modelAndYear = [vehicleModel !== '-' ? vehicleModel : '', vehicle.year || '']
-    .filter(Boolean)
-    .join(' · ') || '-';
-
-  return <article className="flex min-w-0 flex-col gap-4 rounded-2xl border border-slate-200/70 bg-white p-4 shadow-sm">
-    <div className="flex items-start gap-3">
-      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#1a1f6e] text-[#e8b800]"><VehicleIcon className="h-5 w-5" aria-hidden="true" /></div>
-      <div className="min-w-0 flex-1">
-        <h3 className="truncate text-lg font-semibold text-slate-900">{vehicle.plate}</h3>
-        <p className="truncate text-sm text-slate-600" title={modelAndYear}>{modelAndYear}</p>
-      </div>
-      <VehicleAvailabilityStatusBadge status={status} />
-      {/* Same spot and button style as the ellipsis on Driver and Helper cards. */}
-      <button type="button" onClick={() => onView(vehicle)} aria-label={`View details for ${vehicle.plate}`} title="View details" className="-mr-1 -mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[#070b45] transition hover:bg-[#f1f5f9] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1a1f6e]/30">
-        <Eye size={20} strokeWidth={2.2} aria-hidden="true" />
-      </button>
-    </div>
-
-    <dl className="space-y-1.5 border-t border-slate-100 pt-3">
-      <VehicleCardRow label="Type" value={vehicle.truckTypeId || vehicle.type} />
-      <VehicleCardRow label="Capacity" value={capacity} />
-      {vehicle.garage && <VehicleCardRow label="Garage" value={vehicle.garage} />}
-      {showCrew ? <>
-        <VehicleCardRow label="Driver" value={vehicle.driver?.name} />
-        <VehicleCardRow label="Helpers" value={vehicle.helpers?.map(helper => helper.name).join(', ')} />
-      </> : <VehicleCardRow label="Crew" value="" emptyText="No crew assigned" />}
-    </dl>
-  </article>;
-}
-
-function VehicleCardRow({ label, value, emptyText = 'Not recorded' }: { label: string; value?: string | null; emptyText?: string }) {
-  return (
-    <div className="grid grid-cols-[76px_minmax(0,1fr)] gap-3 text-sm">
-      <dt className="text-slate-600">{label}</dt>
-      <dd className={`break-words ${value ? 'font-medium text-slate-900' : 'text-slate-400'}`}>{value || emptyText}</dd>
+    <div className={CARD_GRID}>
+      {vehicles.map(vehicle => {
+        const status = getDisplayVehicleStatus(vehicle);
+        const VehicleIcon = /van|l300/i.test(vehicle.truckTypeId || vehicle.type || '') ? BusFront : Truck;
+        const capacity = vehicle.capacityKg != null ? `${vehicle.capacityKg.toLocaleString()} kg` : vehicle.capacity || '';
+        const model = fullVehicleModel(vehicle);
+        const crew = status === 'Assigned' ? [vehicle.driver?.name, ...(vehicle.helpers ?? []).map(helper => helper.name)].filter(Boolean).join(', ') : '';
+        const type = vehicle.truckTypeId || vehicle.type;
+        return (
+          <AvailabilityCard
+            key={vehicle.id}
+            badge={<VehicleIcon size={22} aria-hidden="true" />}
+            title={vehicle.plate}
+            status={status}
+            subtitle={[model !== '-' ? model : '', vehicle.year || ''].filter(Boolean).join(' · ') || 'Model not recorded'}
+            details={[
+              { label: 'Type', value: notRecorded(type), muted: !type },
+              { label: 'Capacity', value: notRecorded(capacity), muted: !capacity },
+              { label: 'Garage', value: notRecorded(vehicle.garage), muted: !vehicle.garage },
+              { label: 'Crew', value: crew || 'No crew assigned', muted: !crew },
+            ]}
+            onView={() => onView(vehicle)}
+          />
+        );
+      })}
     </div>
   );
 }
 
 function VehicleGridSkeleton() {
-  return <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 xl:grid-cols-3" aria-label="Loading vehicles">
-    {Array.from({ length: 6 }, (_, index) => <div key={index} className="animate-pulse rounded-2xl border border-slate-200 bg-white p-5">
-      <div className="flex gap-3"><div className="h-12 w-12 rounded-xl bg-slate-200" /><div className="flex-1 space-y-2 pt-1"><div className="h-4 w-1/2 rounded bg-slate-200" /><div className="h-3 w-1/3 rounded bg-slate-100" /></div></div>
-      <div className="mt-5 h-4 w-2/3 rounded bg-slate-200" /><div className="mt-4 grid grid-cols-2 gap-4">{Array.from({ length: 6 }, (_, i) => <div key={i} className="space-y-2"><div className="h-3 w-1/2 rounded bg-slate-100" /><div className="h-4 w-2/3 rounded bg-slate-200" /></div>)}</div>
+  return <div className={CARD_GRID} aria-label="Loading">
+    {Array.from({ length: 6 }, (_, index) => <div key={index} className="animate-pulse rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <div className="flex gap-3"><div className="h-11 w-11 shrink-0 rounded-xl bg-slate-100" /><div className="min-w-0 flex-1 space-y-2 pt-1"><div className="h-4 w-2/3 rounded bg-slate-100" /><div className="h-3 w-1/2 rounded bg-slate-100" /></div></div>
+      <div className="mt-4 space-y-2 border-t border-slate-100 pt-3">{Array.from({ length: 3 }, (_, i) => <div key={i} className="h-3 w-4/5 rounded bg-slate-100" />)}</div>
     </div>)}
   </div>;
 }
@@ -554,57 +609,16 @@ function VehicleAvailabilityStatusBadge({ status }: { status: DisplayVehicleStat
   return <span className={`inline-flex shrink-0 items-center whitespace-nowrap rounded-full border px-3 py-1 text-[10px] font-bold uppercase tracking-wide ${colors[status]}`}>{status}</span>;
 }
 
-function CrewEmptyState({ label }: { label: string }) {
+/** License expiry date, flagged when it has expired or expires within 30 days. */
+function LicenseExpiry({ value }: { value?: string | null }) {
+  const status = getLicenseExpiryStatus(value);
   return (
-    <div className="flex min-h-64 flex-col items-center justify-center rounded-2xl border border-slate-200/70 bg-white text-center shadow-sm">
-      <Users className="mb-3 h-9 w-9 text-slate-400" aria-hidden="true" />
-      <p className="text-base font-medium text-slate-800">No {label} found</p>
-      <p className="mt-1 text-sm text-slate-500">Try another status or search term. New {label} are added in User Management.</p>
-    </div>
-  );
-}
-
-function CrewCard({ name, initials, subtitle, status, children, onView, onDelete, canManage }: {
-  name: string;
-  initials: string;
-  subtitle: string;
-  status: CrewStatus;
-  children: ReactNode;
-  onView: () => void;
-  onDelete: () => void;
-  canManage: boolean;
-}) {
-  return (
-    <article className="flex min-w-0 flex-col gap-4 rounded-2xl border border-slate-200/70 bg-white p-4 shadow-sm">
-      <div className="flex items-start gap-3">
-        <Avatar initials={initials} size="lg" />
-        <div className="min-w-0 flex-1">
-          <h3 className="break-words text-lg font-semibold text-slate-900">{name}</h3>
-          <p className="break-words text-sm tabular-nums text-slate-600">{subtitle}</p>
-        </div>
-        <CrewStatusBadge status={status} />
-        {/* One UI row actions: the same trigger and menu styling as the ActionMenu in User Management. */}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button type="button" aria-label={`Actions for ${name}`} className="-mr-1 -mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[#070b45] transition hover:bg-[#f1f5f9] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1a1f6e]/30">
-              <MoreVertical size={20} strokeWidth={2.6} aria-hidden="true" />
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-40 min-w-0 overflow-hidden rounded-xl border border-[#dce3ed] bg-white p-0 py-1.5 shadow-[0_10px_24px_rgba(15,23,42,0.22)]">
-            <DropdownMenuItem onClick={onView} className="flex cursor-pointer items-center gap-3 rounded-none px-4 py-2.5 text-sm text-[#344158] focus:bg-[#f8fafc]">
-              <Eye className="h-4 w-4" aria-hidden="true" /> View
-            </DropdownMenuItem>
-            {canManage && (
-              <DropdownMenuItem onClick={onDelete} className="flex cursor-pointer items-center gap-3 rounded-none px-4 py-2.5 text-sm text-[#ff4040] focus:bg-[#fff1f1] focus:text-[#ff4040]">
-                <Trash2 className="h-4 w-4" aria-hidden="true" /> Delete
-              </DropdownMenuItem>
-            )}
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
-
-      <dl className="space-y-1.5 border-t border-slate-100 pt-3">{children}</dl>
-    </article>
+    <span className="inline-flex flex-wrap items-center gap-x-2 gap-y-1">
+      <span className="tabular-nums">{formatDriverModalDate(value)}</span>
+      {(status === 'Expired' || status === 'Expiring soon') && (
+        <span className={`rounded-full border px-2 py-0.5 text-[11px] font-medium ${status === 'Expired' ? 'border-rose-300 bg-rose-50 text-rose-700' : 'border-amber-300 bg-amber-50 text-amber-700'}`}>{status}</span>
+      )}
+    </span>
   );
 }
 
@@ -612,6 +626,7 @@ function DriverGrid({
   drivers,
   truckFor,
   onView,
+  onEdit,
   onDelete,
   canManage,
 }: {
@@ -619,37 +634,33 @@ function DriverGrid({
   /** The vehicle this driver is currently assigned to, if any. */
   truckFor: (driver: Driver) => VehicleAvailabilityRecord | null;
   onView: (driver: Driver) => void;
+  onEdit: (driver: Driver) => void;
   onDelete: (driver: Driver) => void;
   canManage: boolean;
 }) {
-  if (!drivers.length) return <CrewEmptyState label="drivers" />;
+  if (!drivers.length) return <EmptyCards message="No drivers found. Try another status or search term. New drivers are added in User Management." />;
   return (
-    <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 xl:grid-cols-3">
+    <div className={CARD_GRID}>
       {drivers.map(driver => {
-        const status = displayHelperStatus(driver.status);
         const truck = truckFor(driver);
-        const model = truck ? fullVehicleModel(truck) : '-';
+        const contact = formatContactForDisplay(driver.contact);
+        const plate = truck ? truck.plate || truck.plateNumber : '';
         return (
-        <CrewCard
-          key={driver.id}
-          name={driver.fullName}
-          initials={driver.initials}
-          subtitle={[driver.empId, driver.licenseType].filter(Boolean).join(' · ') || 'Not recorded'}
-          status={status}
-          onView={() => onView(driver)}
-          onDelete={() => onDelete(driver)}
-          canManage={canManage}
-        >
-          {(status === 'On Duty' || truck) && (
-            <CrewCardRow label="Assigned truck" value={truck ? [truck.plate || truck.plateNumber, model !== '-' ? model : ''].filter(Boolean).join(' · ') : ''} emptyText="No truck assigned" />
-          )}
-          <CrewCardRow label="Contact" value={formatContactForDisplay(driver.contact)} />
-          <CrewCardRow label="License no." value={driver.licenseNo} />
-          <div className="grid grid-cols-[104px_minmax(0,1fr)] gap-3 text-sm">
-            <dt className="text-slate-600">License expiry</dt>
-            <dd className="min-w-0"><ExpiryValue value={driver.licenseExpiry} /></dd>
-          </div>
-        </CrewCard>
+          <AvailabilityCard
+            key={driver.id}
+            badge={driver.initials || <UserCheck size={20} aria-hidden="true" />}
+            title={driver.fullName}
+            status={displayHelperStatus(driver.status)}
+            subtitle={[driver.empId, driver.licenseType].filter(Boolean).join(' · ') || 'Not recorded'}
+            details={[
+              { label: 'Contact', value: notRecorded(contact), muted: !contact },
+              { label: 'License', value: driver.licenseExpiry ? <LicenseExpiry value={driver.licenseExpiry} /> : 'Not recorded', muted: !driver.licenseExpiry },
+              { label: 'Truck', value: plate || 'No truck assigned', muted: !plate },
+            ]}
+            onView={() => onView(driver)}
+            onEdit={canManage ? () => onEdit(driver) : undefined}
+            onDelete={canManage ? () => onDelete(driver) : undefined}
+          />
         );
       })}
     </div>
@@ -658,42 +669,45 @@ function DriverGrid({
 
 function HelperGrid({
   helpers,
+  truckFor,
   onView,
+  onEdit,
   onDelete,
   canManage,
 }: {
   helpers: Helper[];
+  /** The vehicle this helper is currently assigned to, if any. */
+  truckFor: (helper: Helper) => VehicleAvailabilityRecord | null;
   onView: (helper: Helper) => void;
+  onEdit: (helper: Helper) => void;
   onDelete: (helper: Helper) => void;
   canManage: boolean;
 }) {
-  if (!helpers.length) return <CrewEmptyState label="helpers" />;
+  if (!helpers.length) return <EmptyCards message="No helpers found. Try another status or search term. New helpers are added in User Management." />;
   return (
-    <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 xl:grid-cols-3">
-      {helpers.map(helper => (
-        <CrewCard
-          key={helper.id}
-          name={helper.fullName}
-          initials={helper.initials}
-          subtitle={helper.empId || 'Not recorded'}
-          status={displayHelperStatus(helper.status)}
-          onView={() => onView(helper)}
-          onDelete={() => onDelete(helper)}
-          canManage={canManage}
-        >
-          <CrewCardRow label="Contact" value={formatContactForDisplay(helper.contact)} />
-          <CrewCardRow label="Join date" value={helper.joinDate ? formatDriverModalDate(helper.joinDate) : ''} />
-        </CrewCard>
-      ))}
-    </div>
-  );
-}
-
-function CrewCardRow({ label, value, emptyText = 'Not recorded' }: { label: string; value?: string | null; emptyText?: string }) {
-  return (
-    <div className="grid grid-cols-[104px_minmax(0,1fr)] gap-3 text-sm">
-      <dt className="text-slate-600">{label}</dt>
-      <dd className={`break-words tabular-nums ${value ? 'font-medium text-slate-900' : 'text-slate-400'}`}>{value || emptyText}</dd>
+    <div className={CARD_GRID}>
+      {helpers.map(helper => {
+        const contact = formatContactForDisplay(helper.contact);
+        const truck = truckFor(helper);
+        const plate = truck ? truck.plate || truck.plateNumber : '';
+        return (
+          <AvailabilityCard
+            key={helper.id}
+            badge={helper.initials || <UserCheck size={20} aria-hidden="true" />}
+            title={helper.fullName}
+            status={displayHelperStatus(helper.status)}
+            subtitle={helper.empId || 'Not recorded'}
+            details={[
+              { label: 'Contact', value: notRecorded(contact), muted: !contact },
+              { label: 'Joined', value: helper.joinDate ? formatDriverModalDate(helper.joinDate) : 'Not recorded', muted: !helper.joinDate },
+              { label: 'Truck', value: plate || 'No truck assigned', muted: !plate },
+            ]}
+            onView={() => onView(helper)}
+            onEdit={canManage ? () => onEdit(helper) : undefined}
+            onDelete={canManage ? () => onDelete(helper) : undefined}
+          />
+        );
+      })}
     </div>
   );
 }
@@ -1097,28 +1111,6 @@ function DeleteDialog({
       onCancel={onClose}
       onConfirm={() => { void confirm(); }}
     />
-  );
-}
-
-function ExpiryValue({ value }: { value: string }) {
-  if (!value) return <span className="text-slate-400">Not recorded</span>;
-  const status = getLicenseExpiryStatus(value);
-  return (
-    <span className="inline-flex flex-wrap items-center gap-x-2 gap-y-1">
-      <span className="font-medium tabular-nums text-slate-900">{formatDriverModalDate(value)}</span>
-      {(status === 'Expired' || status === 'Expiring soon') && (
-        <span className={`inline-flex items-center rounded-full border px-3 py-1 text-[10px] font-bold uppercase tracking-wide ${status === 'Expired' ? 'border-rose-400 bg-rose-50 text-rose-600' : 'border-amber-400 bg-amber-50 text-amber-600'}`}>{status}</span>
-      )}
-    </span>
-  );
-}
-
-function Avatar({ initials, size = 'default' }: { initials: string; size?: 'default' | 'lg' }) {
-  const dimensions = size === 'lg' ? 'h-11 w-11 text-sm' : 'h-9 w-9 text-xs';
-  return (
-    <div className={`${dimensions} flex flex-shrink-0 items-center justify-center rounded-full bg-[#1a1f6e] font-medium text-[#e8b800]`}>
-      {initials || <UserCheck size={14} />}
-    </div>
   );
 }
 

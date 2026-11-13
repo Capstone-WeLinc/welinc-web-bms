@@ -1,10 +1,11 @@
+import { StatusFilter } from '../../components/ui/ListSearchFilters';
 import ModalHeader from '../../components/ui/ModalHeader';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { api } from '../../lib/api';
 import PageHeader from '../../components/pageheader/Pageheader';
 import TablePagination from '../../components/ui/TablePagination';
-import { Check, CheckCheck, ClipboardCheck, Clock3, Coins, FileCheck2, Search, ShieldAlert } from 'lucide-react';
+import { Check, CheckCheck, ClipboardCheck, Clock3, Coins, Eye, FileCheck2, Search, ShieldAlert } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 
 type ItemType = 'booking' | 'collection' | 'refund';
@@ -42,13 +43,12 @@ const titleFor = (item?: ApprovalItem) => {
   return `Review ${item.subtype === 'cancel' ? 'cancellation' : item.subtype ?? 'booking'} request`;
 };
 
-function SummaryCard({ label, value, note, tone, icon: Icon, onClick }: { label: string; value: string | number; note: string; tone: string; icon: typeof Clock3; onClick: () => void }) {
+function SummaryCard({ label, value, tone, icon: Icon, onClick }: { label: string; value: string | number; tone: string; icon: typeof Clock3; onClick: () => void }) {
   return <button type="button" onClick={onClick} className="flex min-h-[96px] w-full items-center gap-4 rounded-xl border border-slate-200 bg-white p-4 text-left shadow-sm transition duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1a1f6e]/30">
     <span className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full ${tone}`}><Icon size={24} strokeWidth={2.25} /></span>
     <span className="min-w-0 flex-1">
       <span className="block text-sm font-medium leading-5 text-slate-700">{label}</span>
       <span className="mt-1 block text-[22px] font-bold leading-tight tabular-nums text-[#0b0f4a]">{value}</span>
-      <span className={`mt-1 block truncate text-xs ${label === 'Total waiting' && Number(String(note).split(' ')[0]) > 0 ? 'text-red-700' : 'text-slate-500'}`}>{note}</span>
     </span>
   </button>;
 }
@@ -167,10 +167,10 @@ export default function Approvals() {
   };
 
   const cards = useMemo(() => [
-    { label: 'Total waiting', value: counts.total, note: `${counts.overdue} overdue`, tone: 'bg-amber-50 text-amber-700', icon: Clock3, target: 'all' as FilterType },
-    { label: 'Reschedules & cancellations', value: counts.booking, note: counts.oldestAt ? `Oldest ${ageLabel(counts.oldestAt)}` : 'No requests waiting', tone: 'bg-indigo-50 text-indigo-700', icon: FileCheck2, target: 'booking' as FilterType },
-    { label: 'Collections to verify', value: counts.collection, note: peso.format(counts.collectionAmount), tone: 'bg-blue-50 text-blue-700', icon: CheckCheck, target: 'collection' as FilterType },
-    { label: 'Refund requests', value: counts.refund, note: peso.format(counts.refundAmount), tone: 'bg-red-50 text-red-700', icon: Coins, target: 'refund' as FilterType },
+    { label: 'Total waiting', value: counts.total, tone: 'bg-amber-50 text-amber-700', icon: Clock3, target: 'all' as FilterType },
+    { label: 'Reschedules & cancellations', value: counts.booking, tone: 'bg-indigo-50 text-indigo-700', icon: FileCheck2, target: 'booking' as FilterType },
+    { label: 'Collections to verify', value: counts.collection, tone: 'bg-blue-50 text-blue-700', icon: CheckCheck, target: 'collection' as FilterType },
+    { label: 'Refund requests', value: counts.refund, tone: 'bg-red-50 text-red-700', icon: Coins, target: 'refund' as FilterType },
   ], [counts]);
 
   const chooseFilter = (value: FilterType) => {
@@ -182,7 +182,7 @@ export default function Approvals() {
   return <div className="space-y-5">
     <PageHeader icon={ClipboardCheck} title="APPROVALS" subtitle={<>Review reschedules, cancellations, collection verifications and refund requests <span className="font-medium text-[#b8860b]">that need your action.</span></>} subtitleClassName="mt-1 text-sm text-slate-500" />
     <div className="grid auto-rows-fr gap-4 sm:grid-cols-2 xl:grid-cols-4">{cards.map((card) => <SummaryCard key={card.label} {...card} onClick={() => chooseFilter(card.target)} />)}</div>
-    <div className="flex flex-col gap-4 items-start justify-between lg:flex-row lg:items-center">
+    <div className="flex flex-col gap-4 items-start justify-between lg:flex-row lg:items-center border border-b-0 border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-800">
       <div className="relative w-full lg:max-w-md">
         <Search size={18} aria-hidden="true" className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
         <input
@@ -194,22 +194,23 @@ export default function Approvals() {
         />
       </div>
       <div className="flex flex-wrap items-center gap-2">
-        {APPROVAL_FILTER_OPTIONS.map(option => <button
-          key={option.value}
-          type="button"
-          aria-pressed={filter === option.value}
-          onClick={() => chooseFilter(option.value)}
-          className={`cursor-pointer whitespace-nowrap rounded-lg border px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide transition-colors ${filter === option.value ? 'border-[#1a1f6e] bg-[#1a1f6e] text-white' : 'border-slate-200 bg-white text-slate-600'}`}
-        >{option.label}</button>)}
+        <StatusFilter options={APPROVAL_FILTER_OPTIONS} value={filter} onChange={chooseFilter} allValue="all" allLabel="All Requests" ariaLabel="Filter approvals" />
+        {filter === 'booking' && <StatusFilter
+          options={[{ value: '', label: 'All' }, { value: 'reschedule', label: 'Reschedule' }, { value: 'cancel', label: 'Cancellation' }]}
+          value={subtype}
+          onChange={value => { setSubtype(value); setPage(1); }}
+          allValue=""
+          allLabel="All Booking Requests"
+          ariaLabel="Filter booking requests"
+        />}
       </div>
     </div>
-    {filter === 'booking' && <div className="flex flex-wrap gap-2">{[['', 'All'], ['reschedule', 'Reschedule'], ['cancel', 'Cancellation']].map(([value, label]) => <button key={value || 'all'} type="button" onClick={() => { setSubtype(value); setPage(1); }} className={`rounded-full border px-3 py-1.5 text-sm ${subtype === value ? 'border-[#1a1f6e] bg-[#1a1f6e] font-medium text-white' : 'border-slate-200 bg-white text-slate-600'}`}>{label}</button>)}</div>}
-    <section className="overflow-visible bg-white">
+    <section className="!mt-0 overflow-visible border border-slate-200 bg-white">
       {error ? <div className="flex min-h-64 flex-col items-center justify-center px-5 text-center"><ShieldAlert className="mb-2 h-8 w-8 text-amber-600" /><p className="text-sm font-medium text-slate-800">Approvals could not be loaded.</p><button onClick={() => void load()} className="mt-3 rounded-lg bg-[#030848] px-4 py-2 text-sm font-medium text-white">Retry</button></div> : <div className="overflow-x-auto"><table className="approval-data-table min-w-[1020px] w-full table-auto text-sm">
         <thead><tr className="bg-[#1a1f6e]">{['Type', 'Booking / Client', 'Details', 'Amount', 'Status', filter === 'approved' ? 'Submitted' : 'Waiting', 'Action'].map((heading) => <th key={heading} className="whitespace-nowrap px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-white">{heading}</th>)}</tr></thead>
         <tbody className="divide-y divide-slate-100">{loading ? <tr><td colSpan={7} className="px-4 py-14 text-center text-sm text-slate-500">Loading approvals...</td></tr> : items.length === 0 ? <tr><td colSpan={7} className="px-4 py-16 text-center"><CheckCheck className="mx-auto mb-2 h-8 w-8 text-emerald-600" /><p className="text-sm font-semibold text-slate-800">{filter === 'approved' ? 'No approved items found' : "You're all caught up"}</p><p className="mt-1 text-sm text-slate-500">{filter === 'approved' ? 'Approved requests will appear here.' : 'No approvals are waiting.'}</p></td></tr> : items.map((item) => {
           const overdue = filter !== 'approved' && Date.now() - new Date(item.submittedAt).getTime() > 86400000;
-          return <tr key={`${item.type}-${item.id}`}><td className="px-4 py-3 align-middle text-sm text-slate-700">{item.type === 'booking' ? `Booking - ${subtypeLabel(item.subtype) || 'request'}` : item.type}</td><td className="px-4 py-3 align-middle"><p className="font-medium text-slate-900">{item.bookingNo}</p><p className="text-sm text-slate-600">{item.client}</p></td><td className="break-words px-4 py-3 align-middle text-sm text-slate-700">{item.summary}</td><td className="whitespace-nowrap px-4 py-3 align-middle font-medium tabular-nums text-slate-900">{item.amount === null ? '-' : peso.format(item.amount)}</td><td className="px-4 py-3 align-middle"><ApprovalStatusBadge status={item.status} /></td><td className={`whitespace-nowrap px-4 py-3 align-middle tabular-nums ${overdue ? 'font-medium text-red-700' : 'text-slate-600'}`}>{filter === 'approved' ? manilaDateTime(item.submittedAt) : <>{ageLabel(item.submittedAt)}{overdue && <span className="ml-1">Overdue</span>}</>}</td><td className="px-4 py-3 align-middle"><button type="button" onClick={() => void openReview(item)} className="rounded-lg border border-slate-300 bg-white px-3.5 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50">{['pending', 'requested', 'verifying'].includes(item.status.toLowerCase()) ? 'Review' : 'View'}</button></td></tr>;
+          return <tr key={`${item.type}-${item.id}`}><td className="px-4 py-3 align-middle text-sm text-slate-700">{item.type === 'booking' ? `Booking - ${subtypeLabel(item.subtype) || 'request'}` : item.type}</td><td className="px-4 py-3 align-middle"><p className="font-medium text-slate-900">{item.bookingNo}</p><p className="text-sm text-slate-600">{item.client}</p></td><td className="break-words px-4 py-3 align-middle text-sm text-slate-700">{item.summary}</td><td className="whitespace-nowrap px-4 py-3 align-middle font-medium tabular-nums text-slate-900">{item.amount === null ? '-' : peso.format(item.amount)}</td><td className="px-4 py-3 align-middle"><ApprovalStatusBadge status={item.status} /></td><td className={`whitespace-nowrap px-4 py-3 align-middle tabular-nums ${overdue ? 'font-medium text-red-700' : 'text-slate-600'}`}>{filter === 'approved' ? manilaDateTime(item.submittedAt) : <>{ageLabel(item.submittedAt)}{overdue && <span className="ml-1">Overdue</span>}</>}</td><td className="px-4 py-3 align-middle"><button type="button" onClick={() => void openReview(item)} aria-label={`${['pending', 'requested', 'verifying'].includes(item.status.toLowerCase()) ? 'Review' : 'View'} ${item.bookingNo}`} title={['pending', 'requested', 'verifying'].includes(item.status.toLowerCase()) ? 'Review' : 'View'} className="inline-flex h-[34px] w-[34px] items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100 hover:text-[#1a1f6e] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1a1f6e]/20"><Eye className="h-4 w-4" aria-hidden="true" /></button></td></tr>;
         })}</tbody>
       </table></div>}
       {!error && <TablePagination page={page} totalPages={totalPages} totalItems={total} pageSize={limit} onPageChange={setPage} onPageSizeChange={(size) => { setLimit(size); setPage(1); }} />}

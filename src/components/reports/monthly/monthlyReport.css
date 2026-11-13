@@ -1,0 +1,94 @@
+/* Monthly Report additions. Card, title, legend and track styles come from operationalReport.css (.opr-*). */
+.mr-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 12px; }
+
+/* 6M / 12M / 24M and Revenue / Trips switches: outlined rounded pills, navy when selected. */
+.mr-switch { display: inline-flex; gap: 4px; padding: 4px; border: 1px solid var(--opr-border); border-radius: 999px; background: #ffffff; }
+.mr-switch button {
+  min-width: 52px;
+  height: 32px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--opr-body);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.mr-switch button[aria-pressed='true'] { background: var(--opr-navy); color: #ffffff; }
+.mr-switch button:focus-visible { outline: 2px solid rgba(26, 31, 110, 0.35); outline-offset: 1px; }
+
+
+/* Monthly trend + Booking status, and Service type + Payment method, side by side when there is room. */
+.mr-row { container-type: inline-size; container-name: mr-row; }
+.mr-row-inner { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
+@container mr-row (min-width: 900px) { .mr-row-inner--trend { grid-template-columns: minmax(0, 1.75fr) minmax(0, 1fr); } }
+@container mr-row (min-width: 760px) { .mr-row-inner--split { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
+
+.mr-card-head { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 12px; }
+
+/* Service type donut (same proportions as the AI Demand Forecast's Service Share) */
+.mr-donut { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 24px; margin-top: 16px; }
+.mr-donut-chart { position: relative; width: 200px; height: 200px; flex: 0 0 200px; }
+.mr-donut-center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; pointer-events: none; }
+.mr-donut-value { font-size: 24px; line-height: 30px; font-weight: 700; color: var(--opr-text); font-variant-numeric: tabular-nums; }
+.mr-donut-name { max-width: 110px; font-size: 13px; line-height: 17px; color: var(--opr-muted); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.mr-donut-legend { flex: 1 1 220px; max-width: 320px; margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 10px; }
+.mr-donut-legend li { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: 14px; line-height: 20px; font-weight: 500; color: var(--opr-body); }
+.mr-donut-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mr-donut-legend .mr-value { margin-left: auto; flex: 0 0 auto; font-weight: 700; color: var(--opr-text); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.mr-donut-legend .mr-value span { font-weight: 500; color: var(--opr-muted); }
+.mr-donut-legend .mr-value.mr-zero { font-weight: 500; color: var(--opr-muted); }
+/* Booking status legend: two columns (For plotting | For verification, Assigned | Rescheduled, Completed | Cancelled). */
+.mr-donut-legend--two-col { flex: 1 1 100%; max-width: 560px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 28px; }
+.mr-service-name--other { color: var(--opr-muted); }
+
+/* "Include unmapped" pill checkbox, as on the AI Demand Forecast's Service Share. */
+.mr-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 999px;
+  background: #f8fafc;
+  color: var(--opr-body);
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.mr-check input { width: 15px; height: 15px; margin: 0; accent-color: var(--opr-navy); cursor: pointer; }
+.mr-check:has(input:disabled) { opacity: 0.55; cursor: not-allowed; }
+.mr-check:has(input:disabled) input { cursor: not-allowed; }
+.mr-check:has(input:focus-visible) { outline: 2px solid rgba(26, 31, 110, 0.35); outline-offset: 2px; }
+
+/* Payment method and booking status */
+.mr-total { margin: 16px 0 2px; font-size: 30px; line-height: 38px; font-weight: 700; color: var(--opr-text); font-variant-numeric: tabular-nums; }
+.mr-total-label { margin: 0 0 14px; font-size: 14px; color: var(--opr-muted); }
+.mr-stack { display: flex; height: 12px; margin-top: 16px; border-radius: 999px; background: var(--opr-track); overflow: hidden; }
+.mr-stack > span { height: 100%; }
+.mr-rows { margin: 14px 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 10px; }
+.mr-rows li { display: flex; align-items: center; gap: 8px; font-size: 14px; line-height: 20px; color: var(--opr-body); font-weight: 500; }
+.mr-rows .mr-value { margin-left: auto; font-weight: 700; color: var(--opr-text); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.mr-rows .mr-value span { font-weight: 500; color: var(--opr-muted); }
+
+.mr-pill {
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 10px;
+  border: 1px solid #c7cbe0;
+  border-radius: 999px;
+  background: #f4f5fb;
+  color: var(--opr-navy);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.mr-table-card { overflow: hidden; }
+.mr-table-head { padding: 20px 22px 16px; }

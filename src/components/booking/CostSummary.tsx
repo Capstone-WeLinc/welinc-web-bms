@@ -29,7 +29,12 @@ export function buildCostLines(booking: Booking, total: number, materials: Array
   const items: Array<{ label: string; amount: number | null; prefix?: string }> = [
     ...(truck?.name ? [{ label: truck.name, amount: parseAmount(truck.rate) }] : []),
     ...(booking.additionalServicesAvailed ?? []).map(service => ({ label: service.name, amount: parseAmount(service.price) })),
-    ...(booking.protectiveMaterials ?? []).map(name => ({ label: name, amount: materials.find(material => material.name === name)?.price ?? null })),
+    // A material repeated in the list means more than one unit (Wix imports store quantity this way).
+    ...Object.entries((booking.protectiveMaterials ?? []).reduce<Record<string, number>>((counts, name) => ({ ...counts, [name]: (counts[name] ?? 0) + 1 }), {}))
+      .map(([name, count]) => {
+        const price = materials.find(material => material.name.toLowerCase() === name.toLowerCase())?.price;
+        return { label: count > 1 ? `${name} ×${count}` : name, amount: price === undefined ? null : price * count };
+      }),
     ...(booking.hasInsurance ? [{ label: 'Goods in Transit Insurance', amount: INSURANCE_PRICE }] : []),
     ...((booking.paymentMethod || booking.requestedPaymentMethod) === 'COD' ? [{ label: 'Cash Surcharge', amount: COD_SURCHARGE, prefix: '+' }] : []),
   ];

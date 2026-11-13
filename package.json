@@ -11,7 +11,9 @@
     "preview": "vite preview",
     "test:e2e": "playwright test --project=chromium --workers=1",
     "test:e2e:ecosystem": "node ../scripts/run-bms-e2e.mjs",
-    "pInstall": "pnpm install"
+    "pInstall": "pnpm install",
+    "test:unit": "node --test tests-unit/operationalReport.logic.test.ts tests-unit/monthlyReport.logic.test.ts",
+    "test:ui": "playwright test -c playwright.ui.config.ts"
   },
   "dependencies": {
     "@enter-pro/analytics-sdk": "^0.0.10",

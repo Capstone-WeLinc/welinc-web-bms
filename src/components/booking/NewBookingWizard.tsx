@@ -1009,7 +1009,7 @@ function S6({ d, catDef, costLines, grandTotal, truckTotal, isU2U }: {
         <Rw label="Contact" value={formatPhoneLocal(d.contact)} />
         <Rw label="Email" value={d.email || '—'} />
       </RC>
-      <RC title="Service" icon={<Briefcase size={16} />}><Rw label="Service Type" value={d.serviceType} />{!isU2U && <Rw label="Truck Type" value={d.truckType} />}{truckTotal > 0 && <Rw label="Preferred Truck" value={`${d.selectedTruck?.name} — ${fmt(truckTotal)}`} />}</RC>
+      <RC title="Service" icon={<Briefcase size={16} />}><Rw label="Service Type" value={d.serviceType} />{!isU2U && <Rw label="Truck Type" value={d.truckType} />}{truckTotal > 0 && d.selectedTruck?.name && <Rw label="Preferred Truck" value={d.selectedTruck.name} />}</RC>
       <RC title="Route & Schedule" icon={<Calendar size={16} />}>
         <Rw label="Category" value={catDef ? `${catDef.code} – ${catDef.label}` : '—'} />
         <Rw label="Date & Time" value={`${d.pickupDate}${d.pickupTime ? ` at ${d.pickupTime}` : ''}`} />
@@ -1048,7 +1048,7 @@ function S6({ d, catDef, costLines, grandTotal, truckTotal, isU2U }: {
         <RC title="Permit" icon={<ShieldCheck size={16} />}><Rw label="Barangay / Subdivision Permit" value="Yes — Required" /></RC>
       )}
       <RC title="Insurance & Payment" icon={<CreditCard size={16} />}>
-        <Rw label="Insurance" value={d.hasInsurance ? `Yes — ${fmt(INSURANCE_PRICE)}` : 'No'} />
+        <Rw label="Insurance" value={d.hasInsurance ? 'Yes' : 'No'} />
         <Rw label="Payment Method" value={d.paymentMethod} />
       </RC>
       {costLines.length > 0 && (

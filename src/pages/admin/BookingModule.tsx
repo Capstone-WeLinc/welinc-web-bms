@@ -22,7 +22,7 @@ import { api } from '../../lib/api';
 import { normalizeBookingStatus, formatBookingAmount } from '../../lib/booking';
 import { subscribeToBookingStatusUpdates } from '../../lib/booking-sync';
 import WelincReviewPanel from '../../components/booking/WelincReviewPanel';
-import { SearchInput } from '../../components/ui/ListSearchFilters';
+import { SearchInput, StatusFilter } from '../../components/ui/ListSearchFilters';
 
 type BookingFilter = BookingStatus | 'All';
 
@@ -322,21 +322,13 @@ export default function Bookings() {
       </div>
 
       {/* Search + Filters */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3 border border-b-0 border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-800">
         <SearchInput value={search} onChange={setSearch} placeholder="Search booking no. or client..." />
-        <div className="flex flex-wrap items-center gap-2">
-          {STATUS_FILTER_OPTIONS.map(option => <button
-            key={option.value}
-            type="button"
-            aria-pressed={statusFilter === option.value}
-            onClick={() => handleStatusFilterClick(option.value)}
-            className={`cursor-pointer whitespace-nowrap rounded-lg border px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide transition-colors ${statusFilter === option.value ? 'border-[#1a1f6e] bg-[#1a1f6e] text-white' : 'border-slate-200 bg-white text-slate-600'}`}
-          >{option.label}</button>)}
-        </div>
+        <StatusFilter options={STATUS_FILTER_OPTIONS} value={statusFilter} onChange={handleStatusFilterClick} />
       </div>
 
       {/* Table Card */}
-      <div className="rounded-none border border-slate-200 bg-white overflow-hidden">
+      <div className="!mt-0 rounded-none border border-slate-200 bg-white overflow-hidden">
         <div className="w-full overflow-x-auto">
           <table className="min-w-[900px] w-full table-auto font-sans text-sm">
             <thead>

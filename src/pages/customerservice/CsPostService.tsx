@@ -1,3 +1,5 @@
+import { StatusFilter } from '../../components/ui/ListSearchFilters';
+import ExportMenu from '../../components/ui/ExportMenu';
 import ModalHeader from '../../components/ui/ModalHeader';
 import TablePagination from '../../components/ui/TablePagination';
 ﻿import { useEffect, useMemo, useState } from 'react';
@@ -6,7 +8,6 @@ import {
   Clock3,
   ClipboardList,
   Edit3,
-  Download,
   Eye,
   MoreVertical,
   Search,
@@ -14,7 +15,6 @@ import {
   TriangleAlert,
   WalletCards,
   XCircle,
-  ChevronDown,
   FileText,
   FileSpreadsheet,
 } from 'lucide-react';
@@ -416,15 +416,6 @@ export default function CsPostService() {
             </button>
           )}
           </div>
-          <details className="group relative shrink-0">
-            <summary className="inline-flex h-10 w-fit cursor-pointer list-none items-center gap-2 whitespace-nowrap rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0b0f4a]/30">
-              <Download size={16} aria-hidden="true" /> Export <ChevronDown size={15} aria-hidden="true" />
-            </summary>
-            <div className="absolute right-0 z-30 mt-2 min-w-36 overflow-hidden rounded-xl border border-slate-200/70 bg-white p-1 shadow-md">
-              <button type="button" onClick={exportPDF} className="inline-flex h-10 w-full items-center gap-2 whitespace-nowrap rounded-lg px-3 text-left text-sm text-slate-700 transition-colors hover:bg-[#e0ac22] hover:text-[#172033] focus-visible:bg-[#e0ac22] focus-visible:text-[#172033] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0b0f4a]/30"><FileText size={15} aria-hidden="true" /> PDF</button>
-              <button type="button" onClick={exportExcel} className="inline-flex h-10 w-full items-center gap-2 whitespace-nowrap rounded-lg px-3 text-left text-sm text-slate-700 transition-colors hover:bg-[#e0ac22] hover:text-[#172033] focus-visible:bg-[#e0ac22] focus-visible:text-[#172033] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0b0f4a]/30"><FileSpreadsheet size={15} aria-hidden="true" /> Excel</button>
-            </div>
-          </details>
         </div>}
       />
 
@@ -432,7 +423,7 @@ export default function CsPostService() {
         {postServiceKpis.map((kpi) => <KPICard key={kpi.label} label={kpi.label} value={kpi.value} icon={kpi.icon} iconColor={kpi.color} variant="dashboard-compact" />)}
       </div>
 
-      <div className="flex flex-col lg:flex-row items-start justify-between gap-4 lg:items-center">
+      <div className="flex flex-col lg:flex-row items-start justify-between gap-4 lg:items-center border border-b-0 border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-800">
         <div className="relative w-full lg:max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
           <input
@@ -445,23 +436,14 @@ export default function CsPostService() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          {FILTERS.map((item) => (
-            <button
-              key={item}
-              onClick={() => setFilter(item)}
-              className={`rounded-lg border px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide transition-colors ${
-                filter === item
-                  ? 'border-[#1a1f6e] bg-[#1a1f6e] text-white'
-                  : 'border-slate-200 bg-white text-slate-600'
-              }`}
-            >
-              {item.toUpperCase()}
-            </button>
-          ))}
+
+          <StatusFilter options={FILTERS} value={filter} onChange={setFilter} />
+            <ExportMenu options={[{ label: 'PDF', icon: FileText, onSelect: () => { void exportPDF(); } }, { label: 'Excel', icon: FileSpreadsheet, onSelect: () => { void exportExcel(); } }]} />
+
         </div>
       </div>
 
-      <div className="overflow-hidden rounded-none border border-slate-200 bg-white">
+      <div className="!mt-0 overflow-hidden rounded-none border border-slate-200 bg-white">
         <div className="overflow-x-auto">
           <table key={filter} className="w-full text-sm">
             <thead className="bg-[#1a1f6e] text-white">

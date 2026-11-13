@@ -1,3 +1,4 @@
+import { StatusFilter } from '../../components/ui/ListSearchFilters';
 import ModalHeader from '../../components/ui/ModalHeader';
 import TotalRow from '../../components/shared/TotalRow';
 import TablePagination from '../../components/ui/TablePagination';
@@ -6,18 +7,15 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
   Search,
   Plus,
-  MoreVertical,
   Eye,
   Download,
   ClipboardList,
-  ChevronDown,
-  FileSpreadsheet,
   Clock3,
   CheckCircle2,
 } from 'lucide-react';
 import { BookingCostSummary, buildCostLines, loadMaterialPrices } from '../../components/booking/CostSummary';
 import { toast } from 'sonner';
-import { exportReportExcel } from '../../lib/documents/reportExport';
+import { exportReportPdf } from '../../lib/documents/reportExport';
 import { useApp } from '../../contexts/AppContext';
 import { buildJobOrderPdf, deduplicateAddress, formatJobOrderDate, formatJobOrderTime, loadJobOrderLogo } from '../../lib/documents/jobOrderDocument';
 import { api } from '../../lib/api';
@@ -32,12 +30,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '../../components/ui/Dialog';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '../../components/ui/Dropdown';
 
 
 function toPesoString(n: number | string | null | undefined): string {
@@ -284,6 +276,67 @@ export default function OperationsJobOrder({ showKpis = false }: { showKpis?: bo
     }
   }
 
+  /** The job orders currently shown (search and status filter applied), as a PDF report. */
+  async function exportPdf() {
+    if (!filtered.length) {
+      toast.error('There are no job orders to export.');
+      return;
+    }
+    const rows = filtered.map((jo) => {
+      const schedule = getScheduleForJobOrder(jo);
+      const booking = getBookingForJobOrder(jo);
+      const driverLabel = getDriverLabel(schedule);
+      const payment = jo.paymentStatus || booking?.paymentStatus;
+      return {
+        jobOrderNo: jo.jobOrderNo || '-',
+        bookingNo: jo.bookingNo ?? '-',
+        client: jo.client || '-',
+        date: schedule?.date || booking?.date || jo.serviceDate || '-',
+        truck: jo.truck && jo.truck !== '-' ? jo.truck : getVehicleLabel(schedule),
+        driver: driverLabel !== '-' ? driverLabel : jo.team || '-',
+        amount: toNumber(toNumber(jo.totalAmount) > 0 ? jo.totalAmount : booking?.amount ?? jo.totalAmount),
+        payment: isUnprocessedPaymentStatus(payment) ? '-' : payment || 'Pending',
+        status: normalizeJobOrderStatus(jo.status),
+      };
+    });
+    try {
+      await exportReportPdf({
+        reportName: 'Job Order Report',
+        fileStem: 'job-order-report',
+        period: 'All job orders',
+        filters: [
+          { label: 'Status', value: statusFilter === 'All' ? 'All statuses' : statusFilter },
+          ...(search.trim() ? [{ label: 'Search', value: search.trim() }] : []),
+        ],
+        generatedBy: user?.fullName || 'Operations',
+        generatedAt: new Date(),
+        landscape: true,
+        sections: [{
+          kind: 'table',
+          title: 'Job orders',
+          note: `${rows.length} ${rows.length === 1 ? 'job order' : 'job orders'}`,
+          columns: [
+            { header: 'Job order no.', key: 'jobOrderNo' },
+            { header: 'Booking no.', key: 'bookingNo' },
+            { header: 'Client', key: 'client' },
+            { header: 'Date', key: 'date' },
+            { header: 'Truck', key: 'truck' },
+            { header: 'Driver', key: 'driver' },
+            { header: 'Total amount', key: 'amount', format: 'peso' },
+            { header: 'Payment', key: 'payment' },
+            { header: 'Status', key: 'status' },
+          ],
+          rows,
+          totals: { amount: rows.reduce((sum, row) => sum + Math.round(row.amount * 100), 0) / 100 },
+        }],
+      });
+      toast.success('Job order report downloaded.');
+    } catch (error) {
+      console.error('Failed to export job orders', error);
+      toast.error('Unable to export the job order report.');
+    }
+  }
+
   async function handleDownload(jo: JobOrder) {
     try {
       const details = getJobOrderDetails(jo);
@@ -328,71 +381,6 @@ export default function OperationsJobOrder({ showKpis = false }: { showKpis?: bo
   }
 
   /** Same branded workbook as the Reports exports: a Summary sheet, then the job orders on their own sheet. */
-  async function exportExcel() {
-    const rows = filtered.map((jo) => {
-      const schedule = getScheduleForJobOrder(jo);
-      const booking = getBookingForJobOrder(jo);
-      const details = getJobOrderDetails(jo);
-      const driver = getDriverLabel(schedule);
-      return {
-        jobOrderNo: jo.jobOrderNo || '-',
-        bookingNo: jo.bookingNo || '-',
-        client: jo.client || '-',
-        date: formatJobOrderDate(schedule?.date || booking?.date || jo.serviceDate || ''),
-        truck: jo.truck && jo.truck !== '-' ? jo.truck : getVehicleLabel(schedule),
-        driver: driver !== '-' ? driver : jo.team || '-',
-        totalAmount: toNumber(jo.totalAmount) > 0 ? toNumber(jo.totalAmount) : toNumber(booking?.amount ?? jo.totalAmount),
-        payment: details.paymentStatus,
-        status: normalizeJobOrderStatus(jo.status),
-      };
-    });
-    const pending = rows.filter((row) => row.status.toLowerCase() === 'pending').length;
-    const totalAmount = rows.reduce((sum, row) => sum + row.totalAmount, 0);
-    const today = new Date().toLocaleDateString('en-PH', { timeZone: 'Asia/Manila', month: 'short', day: 'numeric', year: 'numeric' });
-    try {
-      await exportReportExcel({
-        reportName: 'Job Order Report',
-        fileStem: 'job-order-report',
-        period: `As of ${today}`,
-        filters: [
-          { label: 'Status', value: statusFilter === 'All' ? 'All statuses' : statusFilter },
-          ...(search.trim() ? [{ label: 'Search', value: search.trim() }] : []),
-        ],
-        generatedBy: user?.fullName || 'Operations',
-        generatedAt: new Date(),
-        sections: [
-          {
-            kind: 'metrics', title: 'Summary', items: [
-              { label: 'Job orders', value: rows.length, format: 'number' },
-              { label: 'Pending distribution', value: pending, format: 'number', note: 'Not yet handed to drivers' },
-              { label: 'Distributed', value: rows.length - pending, format: 'number' },
-              { label: 'Total amount', value: totalAmount, format: 'peso', note: 'Across the job orders listed' },
-            ],
-          },
-          {
-            kind: 'table', title: 'Job orders', emptyText: 'No job orders match the current filters.',
-            columns: [
-              { header: 'Job order no.', key: 'jobOrderNo', width: 22 },
-              { header: 'Booking no.', key: 'bookingNo', width: 22 },
-              { header: 'Client', key: 'client', width: 28 },
-              { header: 'Service date', key: 'date', width: 20 },
-              { header: 'Truck', key: 'truck', width: 20 },
-              { header: 'Driver', key: 'driver', width: 24 },
-              { header: 'Total amount', key: 'totalAmount', format: 'peso', width: 18 },
-              { header: 'Payment', key: 'payment', width: 14 },
-              { header: 'Status', key: 'status', width: 16 },
-            ],
-            rows,
-            totals: { totalAmount },
-          },
-        ],
-      });
-    } catch (error) {
-      console.error('Failed to export job orders to Excel', error);
-      toast.error('Unable to export job orders');
-    }
-  }
-
   return (
     <div className="space-y-6">
       <PageHeader
@@ -409,16 +397,6 @@ export default function OperationsJobOrder({ showKpis = false }: { showKpis?: bo
             <Plus className="mr-2 h-4 w-4" />
             DISTRIBUTE JOB ORDER
           </button>
-          <details className="group relative shrink-0">
-            <summary className="inline-flex h-[42px] w-fit cursor-pointer list-none items-center gap-2 whitespace-nowrap rounded-xl border border-slate-300 bg-white px-4 text-sm font-medium text-slate-800 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1a1f6e]/30">
-              <Download className="h-4 w-4" aria-hidden="true" />
-              Export
-              <ChevronDown className="h-4 w-4" aria-hidden="true" />
-            </summary>
-            <div className="absolute right-0 z-50 mt-2 min-w-36 overflow-hidden rounded-xl border border-slate-200/70 bg-white p-1 shadow-lg">
-              <button type="button" onClick={exportExcel} className="inline-flex h-10 w-full items-center gap-2 whitespace-nowrap rounded-lg px-3 text-left text-sm text-slate-700 transition-colors hover:bg-[#e0ac22] hover:text-[#172033] focus-visible:bg-[#e0ac22] focus-visible:text-[#172033] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0b0f4a]/30"><FileSpreadsheet className="h-4 w-4" aria-hidden="true" />Excel</button>
-            </div>
-          </details>
         </div>}
       />
 
@@ -429,7 +407,7 @@ export default function OperationsJobOrder({ showKpis = false }: { showKpis?: bo
       </div>}
 
       {/* Controls */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border border-b-0 border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-800">
           <div className="relative flex-1 max-w-md">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
             <input
@@ -437,29 +415,20 @@ export default function OperationsJobOrder({ showKpis = false }: { showKpis?: bo
               placeholder="Search booking no. and client..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#d4a72c]"
+              className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#0a0f2e]/20"
             />
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            {(['All', 'Pending', 'Distributed'] as const).map((tab) => (
-              <button
-                key={tab}
-                type="button"
-                onClick={() => setStatusFilter(tab)}
-                className={`cursor-pointer whitespace-nowrap rounded-lg border px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide transition-colors ${
-                  statusFilter === tab
-                    ? 'border-[#1a1f6e] bg-[#1a1f6e] text-white'
-                    : 'border-slate-200 bg-white text-slate-600 dark:bg-slate-900 dark:text-slate-400'
-                }`}
-              >
-                {tab.toUpperCase()}
-              </button>
-            ))}
+            <StatusFilter options={['All', 'Pending', 'Distributed'] as const} value={statusFilter} onChange={setStatusFilter} />
+            <button type="button" onClick={() => { void exportPdf(); }} className="inline-flex h-11 w-fit items-center gap-2 whitespace-nowrap rounded-lg border border-slate-200 bg-white px-4 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1a1f6e]/30">
+              PDF
+              <Download className="h-4 w-4" aria-hidden="true" />
+            </button>
           </div>
       </div>
 
       {/* Table */}
-      <div className="rounded-none border border-slate-200 bg-white shadow-sm overflow-hidden dark:border-slate-700 dark:bg-slate-800">
+      <div className="!mt-0 rounded-none border border-slate-200 bg-white shadow-sm overflow-hidden dark:border-slate-700 dark:bg-slate-800">
         <div className="overflow-x-auto">
           <table className="min-w-[1100px] w-full table-auto text-sm">
             <thead className="bg-[#1a1f6e]">
@@ -493,21 +462,14 @@ export default function OperationsJobOrder({ showKpis = false }: { showKpis?: bo
                     <td className="px-4 py-2.5">{isUnprocessedPaymentStatus(jo.paymentStatus || booking?.paymentStatus) ? '-' : <StatusBadge status={jo.paymentStatus || booking?.paymentStatus || 'Pending'} variant="job-order-payment" />}</td>
                     <td className="px-4 py-2.5"><StatusBadge status={normalizeJobOrderStatus(jo.status)} variant="job-order-status" /></td>
                     <td className="px-4 py-2.5">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <button type="button" className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800">
-                            <MoreVertical className="w-4 h-4 text-slate-600 dark:text-slate-400" />
-                          </button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => setViewJobOrder(jo)}>
-                            <Eye className="w-4 h-4 mr-2" /> View
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => handleDownload(jo)}>
-                            <Download className="w-4 h-4 mr-2" /> Download (PDF)
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
+                      <div className="flex items-center gap-1">
+                        <button type="button" onClick={() => setViewJobOrder(jo)} aria-label={`View job order ${jo.jobOrderNo || jo.bookingNo || ''}`} title="View" className="inline-flex h-[34px] w-[34px] items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100 hover:text-[#1a1f6e] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1a1f6e]/20">
+                          <Eye className="h-4 w-4" aria-hidden="true" />
+                        </button>
+                        <button type="button" onClick={() => handleDownload(jo)} aria-label={`Download job order ${jo.jobOrderNo || jo.bookingNo || ''} as PDF`} title="Download PDF" className="inline-flex h-[34px] w-[34px] items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100 hover:text-[#1a1f6e] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1a1f6e]/20">
+                          <Download className="h-4 w-4" aria-hidden="true" />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                   );
