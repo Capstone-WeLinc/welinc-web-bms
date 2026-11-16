@@ -34,7 +34,7 @@ export default defineConfig({
   reporter: 'html',
   /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
   use: {
-    baseURL: 'http://127.0.0.1:5173',
+    baseURL: 'http://localhost:8003',
     trace: 'on-first-retry',
   },
 
@@ -50,9 +50,10 @@ export default defineConfig({
   // Start Vite automatically, or reuse a running local frontend.
   // The backend and its database must be running separately for login/bookings.
   webServer: {
-    command: 'npm run dev -- --host 127.0.0.1 --port 5173 --strictPort',
-    url: 'http://127.0.0.1:5173/login',
+    command: 'npm run dev -- --host localhost --port 8003 --strictPort',
+    url: 'http://localhost:8003/login',
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
+    env: {VITE_API_BASE_URL:'http://localhost:3000',VITE_PORTAL_URL:'http://localhost:8000'},
   },
 });

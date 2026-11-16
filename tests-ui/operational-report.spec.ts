@@ -1,7 +1,7 @@
+import { mockCors } from './session-fixture';
+import { refreshAnswer } from './session-fixture';
 import { expect, test, type Route } from '@playwright/test';
 
-const b64 = (value: object) => Buffer.from(JSON.stringify(value)).toString('base64url');
-const TOKEN = `${b64({ alg: 'none', typ: 'JWT' })}.${b64({ sub: 'admin-1', email: 'admin@example.test', roles: [{ role: 'ADMIN', system: 'BMS' }], exp: 4102444800 })}.sig`;
 
 const MONTHS = ['2025-11', '2025-12', '2026-01', '2026-02', '2026-03', '2026-04', '2026-05', '2026-06', '2026-07', '2026-08', '2026-09', '2026-10', '2026-11'];
 const REPORT = {
@@ -25,30 +25,32 @@ interface Mocks {
 
 async function openReport(page: Page, mocks: Mocks) {
   await page.clock.setFixedTime(new Date('2026-11-10T04:00:00Z'));
-  await page.addInitScript((token) => { localStorage.setItem('token', token); }, TOKEN);
   // Only backend calls: Vite also serves source modules from src/lib/api/.
-  await page.route((url) => url.pathname.startsWith('/api/'), async (route) => {
+  await page.route((url) => url.pathname.startsWith('/bms/') || url.pathname.startsWith('/auth/'), async (route) => {
     const url = new URL(route.request().url());
-    const path = url.pathname.replace(/^\/api/, '');
+    const path = url.pathname.replace(/^\/bms(?=\/(?!config))/, '');
     if (path === '/reports/operational') {
       mocks.operational.push(url);
       if (mocks.operationalHandler) return mocks.operationalHandler(route, mocks.operational.length);
-      return route.fulfill({ json: REPORT });
+      return route.fulfill({headers: mockCors, json: REPORT });
     }
     if (path === '/reports/resources-snapshot') {
       mocks.snapshot.push(url);
       if (mocks.snapshotHandler) return mocks.snapshotHandler(route, mocks.snapshot.length);
-      return route.fulfill({ json: SNAPSHOT });
+      return route.fulfill({headers: mockCors, json: SNAPSHOT });
     }
+    if (path === '/session/refresh') return route.fulfill({headers: mockCors,json:refreshAnswer});
+    if (path === '/session/status') return route.fulfill({headers: mockCors,json:{sessionExpiresAt:refreshAnswer.sessionExpiresAt}});
     if (path === '/auth/me') {
-      return route.fulfill({ json: { id: 'admin-1', name: 'Admin', username: 'admin', email: 'admin@example.test', isActive: true, roles: [{ role: 'ADMIN', system: 'BMS' }], createdAt: '2026-01-01', deletionRequestStatus: 'NONE' } });
+      return route.fulfill({headers: mockCors, json: { id: 'admin-1', name: 'Admin', username: 'admin', email: 'admin@example.test', isActive: true, roles: [{ role: 'ADMIN', system: 'BMS' }], createdAt: '2026-01-01', deletionRequestStatus: 'NONE' } });
     }
-    if (path === '/bms/config/vehicles') return route.fulfill({ json: [{ id: 'v1', plateNumber: 'ABC 1234', alias: 'Truck 1', status: 'AVAILABLE' }] });
-    if (path === '/approvals/counts') return route.fulfill({ json: { total: 0 } });
-    if (route.request().method() !== 'GET') return route.fulfill({ json: {} });
-    return route.fulfill({ json: [] });
+    if (path === '/bms/config/vehicles') return route.fulfill({headers: mockCors, json: [{ id: 'v1', plateNumber: 'ABC 1234', alias: 'Truck 1', status: 'AVAILABLE' }] });
+    if (path === '/approvals/counts') return route.fulfill({headers: mockCors, json: { total: 0 } });
+    if (route.request().method() !== 'GET') return route.fulfill({headers: mockCors, json: {} });
+    return route.fulfill({headers: mockCors, json: [] });
   });
-  await page.goto('/admin/reports');
+  await page.route('https://fonts.googleapis.com/**', route=>route.fulfill({body:''}));
+  await page.goto('/admin/reports',{waitUntil:'domcontentloaded'});
   await page.getByRole('button', { name: 'Operational Report' }).click();
   return page.getByTestId('operational-report');
 }
@@ -100,7 +102,7 @@ test('jobs per vehicle empty state uses full dates', async ({ page }) => {
 
 test('jobs per vehicle ranks vehicles when there is data', async ({ page }) => {
   const mocks = freshMocks();
-  mocks.operationalHandler = (route) => route.fulfill({ json: { ...REPORT, jobsPerVehicle: [{ vehicleId: 'v2', plate: 'XYZ 9876', alias: null, jobs: 1 }, { vehicleId: 'v1', plate: 'ABC 1234', alias: 'Truck 1', jobs: 3 }] } });
+  mocks.operationalHandler = (route) => route.fulfill({headers: mockCors, json: { ...REPORT, jobsPerVehicle: [{ vehicleId: 'v2', plate: 'XYZ 9876', alias: null, jobs: 1 }, { vehicleId: 'v1', plate: 'ABC 1234', alias: 'Truck 1', jobs: 3 }] } });
   const report = await openReport(page, mocks);
   const rows = report.getByTestId('jobs-per-vehicle-card').locator('.opr-vehicle');
   await expect(rows).toHaveCount(2);
@@ -139,14 +141,14 @@ test('shows loading skeletons, then an error with a working retry', async ({ pag
   const gate = new Promise<void>((resolve) => { release = resolve; });
   let failing = true;
   mocks.operationalHandler = async (route) => {
-    if (!failing) return route.fulfill({ json: REPORT });
+    if (!failing) return route.fulfill({headers: mockCors, json: REPORT });
     await gate;
-    return route.fulfill({ status: 500, json: { message: 'down' } });
+    return route.fulfill({headers: mockCors, status: 500, json: { message: 'down' } });
   };
   mocks.snapshotHandler = async (route) => {
-    if (!failing) return route.fulfill({ json: SNAPSHOT });
+    if (!failing) return route.fulfill({headers: mockCors, json: SNAPSHOT });
     await gate;
-    return route.fulfill({ status: 503, json: {} });
+    return route.fulfill({headers: mockCors, status: 503, json: {} });
   };
   const report = await openReport(page, mocks);
 
@@ -168,8 +170,9 @@ test('export offers PDF and Excel of the filtered view', async ({ page }) => {
   await expect(report.locator('[data-card]')).toHaveCount(4);
   const filters = page.getByRole('group', { name: 'Report filters' });
   await filters.getByText('Export', { exact: true }).click();
-  const [excel] = await Promise.all([page.waitForEvent('download'), filters.getByRole('button', { name: 'Excel' }).click()]);
+  const [excel] = await Promise.all([page.waitForEvent('download'), page.getByRole('menuitem', { name: 'Excel' }).click()]);
   expect(excel.suggestedFilename()).toMatch(/^welinc-operational-report-.*\.xlsx$/);
-  const [pdf] = await Promise.all([page.waitForEvent('download'), filters.getByRole('button', { name: 'PDF' }).click()]);
+  await filters.getByText('Export', { exact: true }).click();
+  const [pdf] = await Promise.all([page.waitForEvent('download'), page.getByRole('menuitem', { name: 'PDF' }).click()]);
   expect(pdf.suggestedFilename()).toMatch(/^welinc-operational-report-.*\.pdf$/);
 });

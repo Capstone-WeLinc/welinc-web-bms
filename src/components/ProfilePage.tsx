@@ -1,3 +1,4 @@
+import { profileActivity, type AccountEvent, type EventCatalog } from '../lib/account-activity';
 import ModalHeader from './ui/ModalHeader';
 import PageHeader from './pageheader/Pageheader';
 import { useState, useEffect, useMemo } from 'react';
@@ -114,10 +115,18 @@ export default function ProfilePage({ roleLabel }: Props) {
   const [deletePassword, setDeletePassword] = useState('');
   const [requestingDeletion, setRequestingDeletion] = useState(false);
   const [verifyingPassword, setVerifyingPassword] = useState(false);
+  const [deletionRequest,setDeletionRequest]=useState<{status:string;decisionNote?:string}|null>(null);
+  const [emailPassword,setEmailPassword]=useState('');
+  const [emailCode,setEmailCode]=useState('');
+  const [emailPending,setEmailPending]=useState(false);
+  async function refreshDeletion(){const {data}=await api.get('/auth/profile/deletion-request');setDeletionRequest(data.request);}
+  async function loadActivity(){const [feed,catalog]=await Promise.all([api.get<{data:AccountEvent[]}>('/auth/profile/activity',{params:{limit:5}}),api.get<EventCatalog>('/auth/activity/catalog',{sessionCall:true})]);setActivity(profileActivity(catalog.data,feed.data.data));}
+  async function verifyEmail(){try{await api.post('/auth/profile/email/verify',{code:emailCode});setEmailPending(false);storeUser({...user!,email});toast.success('Email updated');}catch(error){toast.error(getApiErrorMessage(error,'Email verification failed'));}}
+
 
   const initials = useMemo(() => getInitials(user?.fullName || ''), [user?.fullName]);
   const passwordMeetsRule = PASSWORD_RULE.test(newPassword);
-  const latestLoginId = activity.find((log) => log.action === 'LOGIN')?.id;
+  const latestLoginId = activity.find((log) => log.type === 'SIGNED_IN')?.id;
 
   function resetDetails() {
     const { firstName: f, lastName: l } = splitName(user?.fullName || '');
@@ -134,16 +143,15 @@ export default function ProfilePage({ roleLabel }: Props) {
   }, [user?.fullName, user?.email, user?.contact]);
 
   useEffect(() => {
-    api.get<UserActivityLog[]>('/auth/profile/activity')
-      .then((res) => setActivity(res.data))
+    void refreshDeletion().catch(()=>{});
+    loadActivity()
       .catch(() => setActivity([]))
       .finally(() => setActivityLoading(false));
   }, []);
 
   async function refreshActivity() {
     try {
-      const res = await api.get<UserActivityLog[]>('/auth/profile/activity');
-      setActivity(res.data);
+      await loadActivity();
     } catch {
       // The list keeps its last loaded rows.
     }
@@ -151,11 +159,7 @@ export default function ProfilePage({ roleLabel }: Props) {
 
   function storeUser(next: NonNullable<typeof user>) {
     setUser(next);
-    try {
-      localStorage.setItem('welinc_user', JSON.stringify(next));
-    } catch {
-      // The session still has the updated user.
-    }
+
   }
 
   async function handleSaveProfile() {
@@ -174,17 +178,17 @@ export default function ProfilePage({ roleLabel }: Props) {
     try {
       const res = await api.patch('/auth/profile', {
         name: fullName,
-        email: email.trim() || null,
         contact: digits ? `+63${digits.slice(-10)}` : null,
       });
       const updated = res.data;
+      if(email.trim()!==user?.email){await api.post('/auth/profile/email',{newEmail:email.trim(),currentPassword:emailPassword});setEmailPending(true);setEmailPassword('');}
       storeUser({
         ...user!,
         fullName: updated.name,
         email: updated.email || '',
         contact: updated.contact || '',
         profilePicture: updated.profilePicture,
-        deletionRequestStatus: updated.deletionRequestStatus,
+        deletionRequestStatus: deletionRequest?.status,
         initials: getInitials(updated.name),
       });
       setEditing(false);
@@ -242,10 +246,12 @@ export default function ProfilePage({ roleLabel }: Props) {
       return;
     }
 
+    let reauthToken:string;
     setVerifyingPassword(true);
     try {
-      const verifyRes = await api.post('/auth/profile/verify-password', { password: deletePassword });
-      if (!verifyRes.data.valid) {
+      const verifyRes = await api.post('/auth/profile/verify-password', { password: deletePassword, purpose: 'ACCOUNT_DELETION' });
+      reauthToken=verifyRes.data.reauthToken;
+      if (!reauthToken) {
         toast.error('Incorrect password', { description: 'Please check your password and try again.' });
         return;
       }
@@ -258,8 +264,8 @@ export default function ProfilePage({ roleLabel }: Props) {
 
     setRequestingDeletion(true);
     try {
-      const res = await api.post('/auth/profile/deletion-request');
-      storeUser({ ...user!, deletionRequestStatus: res.data.deletionRequestStatus });
+      await api.post('/auth/profile/deletion-request',{reauthToken});
+      await refreshDeletion();
       toast.success('Account deletion requested', { description: 'Your administrator has been notified.' });
       refreshActivity();
       closeDeleteModal();
@@ -353,6 +359,10 @@ export default function ProfilePage({ roleLabel }: Props) {
             </div>
           </section>
 
+          {editing && email!==user?.email && <label className="block">Confirm your current password to change email<input type="password" autoComplete="current-password" value={emailPassword} onChange={event=>setEmailPassword(event.target.value)} className={inputClass}/></label>}
+          {emailPending && <section className={cardClass+' p-6'}><h3>Confirm your new email</h3><p>Enter the code sent to the new email address.</p><input aria-label="Email verification code" autoComplete="one-time-code" value={emailCode} onChange={event=>setEmailCode(event.target.value)} maxLength={6}/><button onClick={()=>void verifyEmail()}>Verify email</button><button onClick={()=>void api.delete('/auth/profile/email').then(()=>setEmailPending(false))}>Cancel email change</button></section>}
+          {deletionRequest?.status==='PENDING' && <button onClick={()=>void api.delete('/auth/profile/deletion-request').then(()=>refreshDeletion()).catch(()=>toast.error('Could not cancel deletion request'))}>Cancel deletion request</button>}
+          {deletionRequest?.status==='REJECTED' && <p>Deletion request rejected: {deletionRequest.decisionNote}</p>}
           {/* Password */}
           <section className={`${cardClass} p-6`}>
             <CardTitle>Password</CardTitle>
@@ -391,17 +401,17 @@ export default function ProfilePage({ roleLabel }: Props) {
               <div className="min-w-0">
                 <CardTitle>Account deletion</CardTitle>
                 <p className="mt-1 max-w-2xl text-sm leading-relaxed text-slate-600">
-                  Requesting deletion notifies your administrator. Once approved, your account and activity records are permanently removed - this cannot be undone.
+                  Requesting deletion notifies your administrator. Approval ends your access; personal information is erased after the recovery period.
                 </p>
               </div>
             </div>
             <button
               type="button"
               onClick={openDeleteModal}
-              disabled={user?.deletionRequestStatus === 'PENDING'}
+              disabled={deletionRequest?.status === 'PENDING'}
               className="inline-flex h-10 shrink-0 items-center justify-center whitespace-nowrap rounded-lg border border-red-300 bg-white px-5 text-sm font-semibold text-red-700 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {user?.deletionRequestStatus === 'PENDING' ? 'Deletion Pending' : 'Request Account Deletion'}
+              {deletionRequest?.status === 'PENDING' ? 'Deletion Pending' : 'Request Account Deletion'}
             </button>
           </section>
 

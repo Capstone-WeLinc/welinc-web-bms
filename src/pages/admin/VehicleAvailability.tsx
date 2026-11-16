@@ -712,17 +712,6 @@ function HelperGrid({
   );
 }
 
-function VehicleDetailField({ label, value, attention = false }: { label: string; value: string | number; attention?: boolean }) {
-  const isEmpty = value === '' || value == null || value === '-';
-  return <div className="min-w-0">
-    <p className="text-sm font-medium text-slate-600 dark:text-slate-300">{label}</p>
-    <p className={`mt-0.5 break-words text-base tabular-nums ${isEmpty ? 'font-normal text-slate-500 dark:text-slate-400' : attention ? 'font-semibold text-orange-600 dark:text-orange-400' : 'font-semibold text-slate-900 dark:text-white'}`}>
-      {attention && !isEmpty && <AlertCircle size={14} className="mr-1 inline-block align-[-2px]" />}
-      {isEmpty ? 'Not recorded' : value}
-    </p>
-  </div>;
-}
-
 function VehicleDetails({ vehicle, onClose }: { vehicle: VehicleAvailabilityRecord | null; onClose: () => void }) {
   const [details, setDetails] = useState<VehicleAvailabilityRecord | null>(vehicle);
   const [loading, setLoading] = useState(false);

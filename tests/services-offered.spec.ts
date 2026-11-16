@@ -1,3 +1,4 @@
+import { sessionToken,gatewayUrl } from './session-helpers';
 import { test, expect, type Page, type Locator } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
 
@@ -34,7 +35,7 @@ test('Services Offered: add and verify each catalog type through the gateway', a
   test.setTimeout(10 * 60_000);
   let headers: { Authorization: string };
   async function getItems(endpoint: string): Promise<Item[]> {
-    const response = await page.request.get(`http://127.0.0.1:3005/api/bms/config/${endpoint}`, { headers });
+    const response = await page.request.get(`http://localhost:3000/bms/config/${endpoint}`, { headers });
     expect(response.ok(), `Read ${endpoint}: ${response.status()}`).toBeTruthy();
     const items: ApiItem[] = await response.json();
     return items.map(normalizeItem);
@@ -47,7 +48,7 @@ test('Services Offered: add and verify each catalog type through the gateway', a
     await page.getByRole('button', { name: 'Sign In', exact: true }).click();
     const nav = page.getByRole('button', { name: 'Services Offered', exact: true });
     await expect(nav).toBeVisible();
-    const token = await page.evaluate(() => localStorage.getItem('token'));
+    const token = await sessionToken(page);
     expect(token).toBeTruthy();
     headers = { Authorization: `Bearer ${token}` };
     await nav.click();

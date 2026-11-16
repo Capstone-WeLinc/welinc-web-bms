@@ -4,7 +4,7 @@ import ModalHeader from '../../components/ui/ModalHeader';
 import TablePagination from '../../components/ui/TablePagination';
 import PageHeader from '../../components/pageheader/Pageheader';
 import { useState, useEffect, useMemo } from 'react';
-import { Search, Eye, MoreVertical, CheckCircle, CheckCircle2, Pencil, XCircle, User as UserIcon, Info, TriangleAlert, FileText, FileSpreadsheet, ClipboardList, Clock3 } from 'lucide-react';
+import { Search, Eye, MoreVertical, CheckCircle, CheckCircle2, XCircle, User as UserIcon, Info, TriangleAlert, FileText, FileSpreadsheet, ClipboardList, Clock3 } from 'lucide-react';
 import { toast } from 'sonner';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -144,22 +144,6 @@ export default function PostService() {
     }
   }
 
-  function openEdit(booking: BookingWithPostService) {
-    setEditBooking(booking);
-    const existingArrivalTime = booking.arrivalTime ? formatTimeOnly(booking.arrivalTime) : '';
-    const timeParts = existingArrivalTime.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
-    setArrivalTime(existingArrivalTime);
-    setArrivalHour(timeParts?.[1] ?? '');
-    setArrivalMinute(timeParts?.[2] ?? '');
-    setArrivalPeriod((timeParts?.[3]?.toUpperCase() as 'AM' | 'PM') ?? 'AM');
-    setAdditionalMaterials(booking.additionalMaterials || []);
-    setCompletionNotes(booking.completionNotes || '');
-    setIssueReported(booking.issueReported || false);
-    setIssueDetails(booking.issueDetails || '');
-    setServiceCompleted(booking.status === 'Completed');
-    setTouched({});
-  }
-
   function closeEdit() {
     setEditBooking(null);
     setArrivalTime('');
@@ -172,16 +156,6 @@ export default function PostService() {
     setIssueDetails('');
     setServiceCompleted(true);
     setTouched({});
-  }
-
-  function formatTimeOnly(value: string) {
-    const timeMatch = value.match(/(?:T|\s)(\d{2}:\d{2})/);
-    const time = timeMatch?.[1] ?? value.match(/^(\d{1,2}:\d{2})/)?.[1];
-    if (!time) return value;
-    const [rawHour, minute] = time.split(':').map(Number);
-    const period = rawHour >= 12 ? 'PM' : 'AM';
-    const hour = rawHour % 12 || 12;
-    return `${hour}:${String(minute).padStart(2, '0')} ${period}`;
   }
 
   function handleArrivalHourChange(value: string) {

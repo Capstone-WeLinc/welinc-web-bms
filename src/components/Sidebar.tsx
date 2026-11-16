@@ -1,3 +1,5 @@
+import { useAuthStore } from '../store/authStore';
+import { canSwitchSystem,switchSystemUrl } from '../lib/session/switchSystem';
 import { useEffect, useMemo, useState } from 'react';
 import { useApp } from '../contexts/AppContext';
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -107,6 +109,7 @@ function SidebarGroup({
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   const { user, logout } = useApp();
+  const sessionUser=useAuthStore(s=>s.user);
   const isAdminNav = user?.role === 'Administrator';
   const isCustomerServiceNav = user?.role === 'Customer Service';
   const isOperationsNav = user?.role === 'Operations';
@@ -156,6 +159,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     if (parentSection) {
       setExpandedSections((current) => ({ ...current, [parentSection]: true }));
     }
+    if(/^https?:\/\//.test(path)){window.open(path,'_blank','noopener,noreferrer');return;}
     navigate(path);
   };
 
@@ -235,7 +239,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
         {/* Notifications and user profile */}
         <div className="border-t border-white/10 px-3 py-3 transition-[padding] duration-300 group-hover:px-5">
-          <NotificationBell />
+          {canSwitchSystem(sessionUser) && <button type="button" onClick={()=>window.location.assign(switchSystemUrl())}>Switch system</button>}
+      <NotificationBell />
           <button
             onClick={() => navigate(getRoleProfile(user?.role ?? 'Administrator'))}
             className="group/profile flex h-11 w-full items-center justify-center rounded-xl px-2 text-left transition-colors hover:bg-white/10 group-hover:justify-start group-hover:gap-3"

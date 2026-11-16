@@ -1,3 +1,4 @@
+import { sessionToken,gatewayUrl } from './session-helpers';
 import { test, expect, type Page, type Response } from '@playwright/test';
 import { addDays, format } from 'date-fns';
 import { randomUUID } from 'node:crypto';
@@ -39,7 +40,7 @@ test('Vehicle and Team Availability: create a driver and helper through the gate
   await page.getByPlaceholder('Enter password').fill(process.env.E2E_ADMIN_PASSWORD || 'admin1234');
   await page.getByRole('button', { name: 'Sign In', exact: true }).click();
   await expect(page).toHaveURL(/\/admin\/dashboard$/);
-  const token = await page.evaluate(() => localStorage.getItem('token'));
+  const token = await sessionToken(page);
   expect(token).toBeTruthy();
   const headers = { Authorization: `Bearer ${token}` };
 
@@ -76,7 +77,7 @@ test('Vehicle and Team Availability: create a driver and helper through the gate
     status: 'Available', emergencyName: driver.emergencyName,
   });
   await expect(page.getByRole('row').filter({ hasText: driver.fullName })).toHaveCount(1);
-  const driverList = await page.request.get('http://127.0.0.1:3005/api/bms/config/drivers', { headers });
+  const driverList = await page.request.get('http://localhost:3000/bms/config/drivers', { headers });
   expect(driverList.ok()).toBeTruthy();
   expect((await driverList.json()).find((item: { id: string }) => item.id === savedDriver.id)).toMatchObject({
     fullName: driver.fullName, email: driver.email, licenseNo: driver.licenseNo,
@@ -107,7 +108,7 @@ test('Vehicle and Team Availability: create a driver and helper through the gate
     fullName: helper.fullName, status: 'Available', emergencyName: helper.emergencyName,
   });
   await expect(page.getByRole('row').filter({ hasText: helper.fullName })).toHaveCount(1);
-  const helperList = await page.request.get('http://127.0.0.1:3005/api/bms/config/helpers', { headers });
+  const helperList = await page.request.get('http://localhost:3000/bms/config/helpers', { headers });
   expect(helperList.ok()).toBeTruthy();
   expect((await helperList.json()).find((item: { id: string }) => item.id === savedHelper.id)).toMatchObject({
     fullName: helper.fullName, emergencyName: helper.emergencyName,

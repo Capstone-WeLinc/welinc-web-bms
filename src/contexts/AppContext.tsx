@@ -1,107 +1,27 @@
+import SessionMonitor from '../components/SessionMonitor';
 /* eslint-disable react-refresh/only-export-components */
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React,{createContext,useContext,useState,useEffect,useCallback} from 'react';
 import type { User } from '../lib/types';
-import { logout as doLogout, getCurrentUser, mapBackendUser } from '../lib/auth';
-import { api } from '../lib/api';
+import { getCurrentUser } from '../lib/auth';
+import { boot,signOut } from '../lib/session/session';
+import { useAuthStore } from '../store/authStore';
 import { toast } from 'sonner';
-
-interface AppContextType {
-  user: User |
-   null;
-  setUser: (u: User | null) => void;
-  logout: () => void;
-  darkMode: boolean;
-  toggleDarkMode: () => void;
-  sidebarCollapsed: boolean;
-  toggleSidebar: () => void;
+interface AppContextType{user:User|null;setUser:(user:User|null)=>void;logout:()=>void;darkMode:boolean;toggleDarkMode:()=>void;sidebarCollapsed:boolean;toggleSidebar:()=>void;}
+const AppContext=createContext<AppContextType|null>(null);
+let bootTask:Promise<void>|null=null;
+export function AppProvider({children}:{children:React.ReactNode}){
+  const [user,setUser]=useState<User|null>(getCurrentUser);
+  const state=useAuthStore(s=>s);
+  const [darkMode,setDarkMode]=useState(()=>localStorage.getItem('welinc_theme')==='dark');
+  const [sidebarCollapsed,setSidebarCollapsed]=useState(()=>localStorage.getItem('welinc_sidebar')==='collapsed');
+  const publicPage=window.location.pathname.startsWith('/track/') || window.location.pathname==='/forgot-password';
+  useEffect(()=>{let previous=useAuthStore.getState().user;return useAuthStore.subscribe(()=>{const current=useAuthStore.getState().user;if(current!==previous){previous=current;setUser(getCurrentUser());}});},[]);
+  useEffect(()=>{if(!publicPage){bootTask??=boot();void bootTask;}},[publicPage]);
+  useEffect(()=>{document.documentElement.classList.toggle('dark',darkMode);},[darkMode]);
+  const toggleDarkMode=useCallback(()=>setDarkMode(old=>{localStorage.setItem('welinc_theme',old?'light':'dark');return !old;}),[]);
+  const toggleSidebar=useCallback(()=>setSidebarCollapsed(old=>{localStorage.setItem('welinc_sidebar',old?'expanded':'collapsed');return !old;}),[]);
+  const logout=useCallback(()=>{void signOut().then(result=>{if(result==='failed')toast.error('Could not sign out. Please try again.');});},[]);
+  const content=publicPage || state.status==='ready'?<>{children}<SessionMonitor/></>:state.status==='unavailable'?<main className="p-8"><h1>Sign-in service unavailable</h1><button onClick={()=>{bootTask=boot();}}>Retry</button></main>:<main className="p-8" aria-live="polite">Checking your session...</main>;
+  return <AppContext.Provider value={{user,setUser,logout,darkMode,toggleDarkMode,sidebarCollapsed,toggleSidebar}}>{content}</AppContext.Provider>;
 }
-
-const AppContext = createContext<AppContextType | null>(null);
-
-export function AppProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<User | null>(() => {
-    const currentUser = getCurrentUser();
-    if (currentUser) {
-      try {
-        const token = localStorage.getItem('token');
-        if (token) {
-          api.defaults.headers.common.Authorization = `Bearer ${token}`;
-        }
-      } catch {
-        // ignore localStorage access errors
-      }
-    }
-    return currentUser;
-  });
-
-  const [darkMode, setDarkMode] = useState<boolean>(() => {
-    const stored = localStorage.getItem('welinc_theme');
-    return stored === 'dark';
-  });
-
-  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
-    return localStorage.getItem('welinc_sidebar') === 'collapsed';
-  });
-
-  useEffect(() => {
-    document.documentElement.classList.toggle('dark', darkMode);
-  }, [darkMode]);
-
-  useEffect(() => {
-    let mounted = true;
-    const token = localStorage.getItem('token');
-    if (!token) return;
-
-    api.get('/auth/me')
-      .then((res) => {
-        if (mounted) {
-          const mapped = mapBackendUser(res.data);
-          setUser(mapped);
-          try {
-            localStorage.setItem('welinc_user', JSON.stringify(mapped));
-          } catch {
-            // ignore localStorage access errors
-          }
-        }
-      })
-      .catch(() => {
-        // keep the token-decoded user if the request fails
-      });
-
-    return () => { mounted = false; };
-  }, []);
-
-  const toggleDarkMode = useCallback(() => {
-    setDarkMode(prev => {
-      const next = !prev;
-      localStorage.setItem('welinc_theme', next ? 'dark' : 'light');
-      return next;
-    });
-  }, []);
-
-  const toggleSidebar = useCallback(() => {
-    setSidebarCollapsed(prev => {
-      const next = !prev;
-      localStorage.setItem('welinc_sidebar', next ? 'collapsed' : 'expanded');
-      return next;
-    });
-  }, []);
-
-  const logout = useCallback(() => {
-    doLogout();
-    setUser(null);
-    toast.success('Logged out successfully');
-  }, []);
-
-  return (
-    <AppContext.Provider value={{ user, setUser, logout, darkMode, toggleDarkMode, sidebarCollapsed, toggleSidebar }}>
-      {children}
-    </AppContext.Provider>
-  );
-}
-
-export function useApp() {
-  const ctx = useContext(AppContext);
-  if (!ctx) throw new Error('useApp must be inside AppProvider');
-  return ctx;
-}
+export function useApp(){const value=useContext(AppContext);if(!value)throw new Error('useApp must be inside AppProvider');return value;}

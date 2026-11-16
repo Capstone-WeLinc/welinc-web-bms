@@ -35,7 +35,7 @@ const serviceDate = (value: string) => new Intl.DateTimeFormat('en-PH', {
 export default function BookingTracking() {
   const { bookingId = '' } = useParams();
   const [searchParams] = useSearchParams();
-  const token = searchParams.get('token') ?? '';
+  const token = searchParams.get('token') /* signed customer tracking capability */ ?? ''; // check-system: allow customer tracking capability is not a user login token
   const [tracking, setTracking] = useState<TrackingData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);

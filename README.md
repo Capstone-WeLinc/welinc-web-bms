@@ -1,27 +1,54 @@
 # BMS web app
 
-This React and Vite app is the browser interface for the BMS ecosystem. For first-time setup and the full local startup sequence, use the [root developer setup](../README.md).
+React and Vite browser app on `http://localhost:8003`. Start the shared stack,
+then the BMS stack using the [BMS setup guide](../docs/context/bms/setup.md).
+Sign-in and password recovery use the portal on 8000. Browser API calls use the
+suite gateway on 3000, with business routes under `/bms`.
+
+The web app stores access tokens in memory. The session host uses a HttpOnly
+refresh cookie restricted to `/bms/session`. Refresh, idle expiry, multi-tab
+coordination and sign-out follow the copied VRMS session implementation.
+Customer tracking at `/track/:id` remains public and bypasses office sign-in.
+
+Accounts are managed in the portal. BMS admins retain a separate Crew page for
+local driver/helper business profiles. Work activity is served by BMS; account
+activity, profile changes and deletion requests use shared auth's APIs.
 
 ## Development
 
-The root launcher starts Vite on port `5173` and proxies browser requests under `/api` to the BMS gateway on port `3005`. It also starts the Auth bridge, Booking, Dispatch, Completion, Analytics API, and Analytics projection worker needed by the screens. This is the recommended way to work on the frontend:
+Use Node 24 and npm. `.env.example` documents `VITE_API_BASE_URL` and
+`VITE_PORTAL_URL`; both are required. Compose provides their local values.
+To run Vite separately after the APIs are running:
 
-- Start the ecosystem from the repository root using the Windows or macOS/Linux command in the [root setup guide](../README.md).
-- Open [http://localhost:5173](http://localhost:5173).
+```sh
+npm ci
+npm run dev
+```
 
-The app's local `.env` is created from [`.env.example`](.env.example) by the root launcher. `VITE_BMS_API_BASE_URL` should remain `/api`; `BMS_DEV_API_TARGET` should point to the gateway. Do not point BMS browser requests directly at the old partner bridge.
+An optional `VITE_GOOGLE_MAPS_API_KEY` is public browser configuration. Restrict
+it to the intended browser origins and APIs. Server secrets must never use a
+`VITE_` name. Without the Maps browser key, the existing Leaflet fallback stays
+available.
 
-If the full launcher is not managing the frontend process and the gateway and APIs are already running, start only Vite with `npm run dev` from this folder. Do not start a second Vite process on port `5173` while the ecosystem launcher is running.
-
-A browser Google Maps key is optional and separate from the server-side Google Routes key. If provided as `VITE_GOOGLE_MAPS_API_KEY`, restrict it to the intended browser origins and Maps JavaScript API. Without it, the map uses its Leaflet fallback.
-
-## Checks
-
-From this folder:
+## Verification
 
 ```sh
 npx tsc --noEmit -p tsconfig.app.json
 npm run build
+npm run test:session
+npm run test:unit
+npm run test:ui
 ```
 
-The gateway owns API routing and the service APIs own their data. See the root README for service boundaries, local database ports, demo logins, and troubleshooting.
+The UI suite mocks API responses and covers session behavior, account screens,
+reports and exports. The live browser check requires the running shared/BMS
+stack and suite seed accounts:
+
+```sh
+npx playwright test --project=chromium tests/integration-session.spec.ts --reporter=list
+```
+
+It signs in through the real portal, restores a BMS deep link, checks browser
+storage and signs out. Older business E2E scenarios also need a working VMMS
+fleet API and populated booking workflows; they are not the suite lead's
+cross-system acceptance run. See the [verification record](../docs/context/bms/verification.md).

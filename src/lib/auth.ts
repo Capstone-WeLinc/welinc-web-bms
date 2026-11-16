@@ -1,4 +1,5 @@
-import { jwtDecode } from 'jwt-decode';
+import { useAuthStore } from '../store/authStore';
+import { signOut } from './session/session';
 import type { User } from './types';
 import type { LucideIcon } from 'lucide-react';
 import {
@@ -44,68 +45,11 @@ export interface NavSection {
 
 export type NavEntry = NavItem | NavSection;
 
-export function decodeJwt<T>(token: string): T {
-  return jwtDecode<T>(token);
-}
-
-/** Returns true when the token has an expiry time that has already passed. */
-export function isTokenExpired(token: string): boolean {
-  try {
-    const { exp } = decodeJwt<{ exp?: number }>(token);
-    return typeof exp === 'number' && exp * 1000 <= Date.now();
-  } catch {
-    return true;
-  }
-}
-
-export function logout(): void {
-  localStorage.removeItem('welinc_user');
-  localStorage.removeItem('token');
-}
-
+export function logout(): void { void signOut(); }
 export function getCurrentUser(): User | null {
-  // Prefer token-backed user reconstruction. If a valid token exists, use it.
-  const token = localStorage.getItem('token');
-  if (token) {
-    if (isTokenExpired(token)) {
-      logout();
-      return null;
-    }
-    try {
-      const decoded = jwtDecode<JwtPayload>(token);
-      const bmsRole =
-        decoded.roles?.find(
-          (role: { role: string; system: string }) => role.system === 'BMS',
-        ) || decoded.roles?.[0];
-
-      return {
-        id: decoded.sub,
-        username: decoded.email,
-        role: mapBackendRole(bmsRole?.role ?? ''),
-        fullName: decoded.email,
-        email: decoded.email,
-        contact: '',
-        profilePicture: null,
-        deletionRequestStatus: 'NONE',
-        status: 'Active',
-        createdAt: '',
-        initials: decoded.email
-          .split(/[.@\s_-]+/)
-          .filter(Boolean)
-          .slice(0, 2)
-          .map((n) => n[0]?.toUpperCase())
-          .join(''),
-      };
-    } catch {
-      // Invalid token should not keep a stale stored user.
-      localStorage.removeItem('welinc_user');
-      return null;
-    }
-  }
-
-  // If there is no access token, do not treat the user as authenticated.
-  localStorage.removeItem('welinc_user');
-  return null;
+  const user=useAuthStore.getState().user;
+  if(!user)return null;
+  return mapBackendUser({id:user.id,name:user.name,username:user.email,email:user.email,roles:user.roles,contact:null,profilePicture:null,deletionRequestStatus:'NONE',isActive:true,isLocked:false,lockedAt:null,createdAt:'',updatedAt:''});
 }
 
 export function getRoleDashboard(role: UserRole): string {
@@ -134,7 +78,8 @@ export function getNavItems(role: UserRole): NavEntry[] {
         {
           type: 'section', label: 'Administration', icon: ClipboardCheck, items: [
             { label: 'Approvals', path: '/admin/approvals', icon: CheckCheck },
-            { label: 'User Accounts', path: '/admin/users', icon: Users },
+            { label: 'User Accounts', path: `${import.meta.env.VITE_PORTAL_URL}/admin/people?system=BMS`, icon: Users },
+            { label: 'Crew', path: '/admin/crew', icon: UserCheck },
             { label: 'Activity Logs', path: '/admin/activity-logs', icon: SquareActivity },
           ],
         },
@@ -213,7 +158,7 @@ export interface BackendUser {
 
 export function mapBackendUser(backendUser: BackendUser): User {
   const fullName = backendUser.name || backendUser.email || backendUser.username;
-  const roleAssignment = backendUser.roles?.[0];
+  const roleAssignment = backendUser.roles?.find(role=>role.system==='BMS');
   const role = mapBackendRole(roleAssignment?.role ?? '');
   return {
     id: backendUser.id,

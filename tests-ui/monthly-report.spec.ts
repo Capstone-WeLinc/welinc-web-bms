@@ -1,7 +1,7 @@
+import { mockCors } from './session-fixture';
+import { refreshAnswer } from './session-fixture';
 import { expect, test, type Page } from '@playwright/test';
 
-const b64 = (value: object) => Buffer.from(JSON.stringify(value)).toString('base64url');
-const TOKEN = `${b64({ alg: 'none', typ: 'JWT' })}.${b64({ sub: 'admin-1', email: 'admin@example.test', roles: [{ role: 'ADMIN', system: 'BMS' }], exp: 4102444800 })}.sig`;
 
 // 18 trips in October, 54 in November (month in progress), 2 cancelled; one verified GCash payment in October.
 const services = ['Lipat Bahay', 'Office Pull out', 'Corporate Delivery', 'Unit to Unit Transfer'];
@@ -15,17 +15,19 @@ const SALES = [{ id: 's1', date: '2026-10-15', bookingNo: 'OCT-0', status: 'Subm
 
 async function openMonthly(page: Page, extraBookings: object[] = []) {
   await page.clock.setFixedTime(new Date('2026-11-10T04:00:00Z'));
-  await page.addInitScript((token) => { localStorage.setItem('token', token); }, TOKEN);
-  await page.route((url) => url.pathname.startsWith('/api/'), async (route) => {
-    const path = new URL(route.request().url()).pathname.replace(/^\/api/, '');
-    if (path === '/auth/me') return route.fulfill({ json: { id: 'admin-1', name: 'Admin', username: 'admin', email: 'admin@example.test', isActive: true, roles: [{ role: 'ADMIN', system: 'BMS' }], createdAt: '2026-01-01', deletionRequestStatus: 'NONE' } });
-    if (path === '/booking') return route.fulfill({ json: [...BOOKINGS, ...extraBookings] });
-    if (path === '/daily-sales') return route.fulfill({ json: SALES });
-    if (path === '/approvals/counts') return route.fulfill({ json: { total: 0 } });
-    if (route.request().method() !== 'GET') return route.fulfill({ json: {} });
-    return route.fulfill({ json: [] });
+  await page.route((url) => url.pathname.startsWith('/bms/') || url.pathname.startsWith('/auth/'), async (route) => {
+    const path = new URL(route.request().url()).pathname.replace(/^\/bms(?=\/(?!config))/, '');
+    if (path === '/session/refresh') return route.fulfill({headers: mockCors,json:refreshAnswer});
+    if (path === '/session/status') return route.fulfill({headers: mockCors,json:{sessionExpiresAt:refreshAnswer.sessionExpiresAt}});
+    if (path === '/auth/me') return route.fulfill({headers: mockCors, json: { id: 'admin-1', name: 'Admin', username: 'admin', email: 'admin@example.test', isActive: true, roles: [{ role: 'ADMIN', system: 'BMS' }], createdAt: '2026-01-01', deletionRequestStatus: 'NONE' } });
+    if (path === '/booking') return route.fulfill({headers: mockCors, json: [...BOOKINGS, ...extraBookings] });
+    if (path === '/daily-sales') return route.fulfill({headers: mockCors, json: SALES });
+    if (path === '/approvals/counts') return route.fulfill({headers: mockCors, json: { total: 0 } });
+    if (route.request().method() !== 'GET') return route.fulfill({headers: mockCors, json: {} });
+    return route.fulfill({headers: mockCors, json: [] });
   });
-  await page.goto('/admin/reports');
+  await page.route('https://fonts.googleapis.com/**', route=>route.fulfill({body:''}));
+  await page.goto('/admin/reports',{waitUntil:'domcontentloaded'});
   await page.getByRole('button', { name: 'Monthly Report' }).click();
   return page.getByTestId('monthly-report');
 }

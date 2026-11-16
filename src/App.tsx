@@ -11,7 +11,7 @@ import CsBookings from './pages/customerservice/CsBookings';
 import AdminProfile from './pages/admin/AdminProfile';
 import CsProfile from './pages/customerservice/CsProfile';
 import AdminSettings from './pages/admin/AdminSettings';
-import Users from './pages/admin/UserManagement';
+import Users from './pages/admin/CrewManagement';
 import LogIn from './pages/auth/LogIn';
 import ForgotPassword from './pages/auth/ForgotPassword';
 import BookingModule from './pages/admin/BookingModule';
@@ -42,6 +42,7 @@ function App() {
     <BrowserRouter>
       <>
       <Routes>
+        <Route path="/admin/users" element={<Navigate to="/admin/crew" replace />} />
         <Route path="/track/:bookingId" element={<BookingTracking />} />
         <Route path="/login" element={<LogIn />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
@@ -77,7 +78,7 @@ function App() {
           }
         />
         <Route
-          path="/admin/users"
+          path="/admin/crew"
           element={
             <ProtectedRoute allowedRoles={['Administrator']}>
               <Layout>

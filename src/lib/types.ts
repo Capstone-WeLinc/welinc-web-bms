@@ -18,7 +18,8 @@ export interface User {
 
 export interface UserActivityLog {
   id: string;
-  action: 'LOGIN' | 'PASSWORD_CHANGE' | 'LOGOUT_ALL' | 'PROFILE_UPDATE';
+  action: string;
+  type?: string;
   deviceInfo?: string | null;
   location?: string | null;
   ipAddress?: string | null;

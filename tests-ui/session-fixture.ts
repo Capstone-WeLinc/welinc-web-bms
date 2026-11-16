@@ -1,0 +1,2 @@
+export const refreshAnswer={accessToken:'ui-test-access',expiresIn:900,sessionExpiresAt:new Date(Date.now()+30*60_000).toISOString(),sessionAbsoluteExpiresAt:new Date(Date.now()+12*60*60_000).toISOString(),user:{id:'admin-1',name:'Admin',email:'admin@example.test',roles:[{system:'BMS',role:'ADMIN'}],systems:['BMS']}};
+export const mockCors={'access-control-allow-origin':'http://localhost:8003','access-control-allow-credentials':'true','access-control-allow-methods':'GET,POST,PATCH,DELETE,OPTIONS','access-control-allow-headers':'authorization,content-type'};
