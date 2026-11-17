@@ -13,10 +13,12 @@
     "test:e2e:ecosystem": "playwright test --project=chromium --workers=1",
     "test:unit": "node --test tests-unit/operationalReport.logic.test.ts tests-unit/monthlyReport.logic.test.ts",
     "test:ui": "playwright test -c playwright.ui.config.ts",
-    "test:session": "vitest run src/lib/session"
+    "test:session": "vitest run src/lib/session",
+    "typecheck": "tsc --noEmit -p tsconfig.app.json",
+    "test": "npm run test:session && npm run test:unit",
+    "test:hosting": "npm run build:prod && playwright test -c playwright.hosting.config.ts"
   },
   "dependencies": {
-    "@enter-pro/analytics-sdk": "^0.0.10",
     "@hookform/resolvers": "^5.2.1",
     "@radix-ui/react-accordion": "^1.2.12",
     "@radix-ui/react-alert-dialog": "^1.1.16",
@@ -72,8 +74,6 @@
     "tailwind-merge": "^3.6.0",
     "tailwindcss-animate": "^1.0.7",
     "vaul": "^1.1.2",
-    "vite-plugin-enter-dev": "^0.0.7",
-    "xlsx": "^0.18.5",
     "zod": "^4.1.5"
   },
   "devDependencies": {
@@ -83,6 +83,7 @@
     "@playwright/test": "^1.62.1",
     "@tailwindcss/postcss": "^4.1.12",
     "@tailwindcss/typography": "^0.5.16",
+    "@types/google.maps": "^3.66.10",
     "@types/leaflet": "^1.9.14",
     "@types/node": "^24.13.3",
     "@types/react": "^19.1.12",
