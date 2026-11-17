@@ -34,7 +34,7 @@ available.
 
 ```sh
 npx tsc --noEmit -p tsconfig.app.json
-npm run build
+npm run build:prod
 npm run test:session
 npm run test:unit
 npm run test:ui
@@ -52,3 +52,14 @@ It signs in through the real portal, restores a BMS deep link, checks browser
 storage and signs out. Older business E2E scenarios also need a working VMMS
 fleet API and populated booking workflows; they are not the suite lead's
 cross-system acceptance run. See the [verification record](../docs/context/bms/verification.md).
+
+## Hosting
+
+Set `VITE_API_BASE_URL` and `VITE_PORTAL_URL` to the target environment's HTTPS
+addresses before `npm run build:prod`. Deploy `dist/` as a Static Web App.
+`public/staticwebapp.config.json` supplies SPA fallback and security headers
+with explicit Google Maps, Carto and font hosts. Leaflet and its CSS are bundled.
+The CI template runs audit, lint, typecheck, session/report tests and this
+production build. All sign-out controls use the shared confirmation/retry flow;
+system-switch and failed-sign-out regressions are included. See the
+[BMS hosting handoff](../docs/context/bms/hosting-handoff.md).
