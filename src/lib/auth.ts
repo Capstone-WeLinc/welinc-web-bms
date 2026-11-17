@@ -1,5 +1,5 @@
 import { useAuthStore } from '../store/authStore';
-import { signOut } from './session/session';
+import { signOutFlow } from './session/signOutFlow';
 import type { User } from './types';
 import type { LucideIcon } from 'lucide-react';
 import {
@@ -45,7 +45,7 @@ export interface NavSection {
 
 export type NavEntry = NavItem | NavSection;
 
-export function logout(): void { void signOut(); }
+export function logout(): void { void signOutFlow({ask:true}); }
 export function getCurrentUser(): User | null {
   const user=useAuthStore.getState().user;
   if(!user)return null;

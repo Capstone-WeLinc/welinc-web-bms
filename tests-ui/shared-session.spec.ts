@@ -1,6 +1,6 @@
-import { expect,test,type Page } from '@playwright/test';
+import { expect,test,type Page,type Route } from '@playwright/test';
 import { mockCors,refreshAnswer } from './session-fixture';
-async function mockApi(page:Page,extra?:(path:string,body:any)=>any){
+async function mockApi(page:Page,extra?:(path:string,body:Record<string,unknown>|null)=>Parameters<Route['fulfill']>[0]|undefined){
   await page.route('https://fonts.googleapis.com/**',route=>route.fulfill({body:''}));
   await page.route(url=>url.hostname==='localhost'&&url.port==='8000',route=>route.fulfill({contentType:'text/html',body:'<h1>Shared portal</h1>'}));
   await page.route(url=>url.hostname==='localhost'&&url.port==='3000',async route=>{
@@ -39,7 +39,7 @@ test('public tracking does not start an office session',async({page})=>{
   await expect(page).toHaveURL(/\/track\/example/);await page.waitForLoadState('domcontentloaded');expect(refreshed).toBe(false);
 });
 test('account deletion sends its one-use reauthentication token and purpose',async({page})=>{
-  let verification:any;let deletion:any;
+  let verification:unknown;let deletion:unknown;
   await mockApi(page,(path,body)=>{
     if(path==='/auth/profile/verify-password'){verification=body;return {json:{reauthToken:'single-use-test',expiresAt:'2050-01-01T00:00:00Z'}};}
     if(path==='/auth/profile/deletion-request'&&body?.reauthToken){deletion=body;return {status:201,json:{status:'PENDING'}};}
@@ -65,4 +65,20 @@ test('an admin code requirement stays in BMS and links to portal confirmation',a
   await expect(page.getByRole('alert')).toContainText('Confirm your sign in in the portal');
   await expect(page.getByRole('alert').getByRole('link',{name:'Open portal'})).toHaveAttribute('href','http://localhost:8000/admin');
   await expect(page).toHaveURL(/\/admin\/activity-logs$/);
+});
+
+
+test('failed sign-out offers retry and preserves the page when Stay here is chosen',async({page})=>{
+  let attempts=0;
+  await mockApi(page,path=>path==='/bms/session/logout'?{status:503,json:{code:'UPSTREAM_UNAVAILABLE',attempt:++attempts}}:undefined);
+  await page.goto('/admin/crew',{waitUntil:'domcontentloaded'});
+  await page.getByRole('button',{name:/^sign out$/i}).click();
+  await page.getByRole('dialog').getByRole('button',{name:'Sign out',exact:true}).click();
+  await expect(page.getByRole('dialog')).toContainText("Couldn't sign out");
+  await page.getByRole('button',{name:'Try again',exact:true}).click();
+  await expect.poll(()=>attempts).toBe(2);
+  await page.getByRole('button',{name:'Stay here',exact:true}).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page.getByRole('heading',{name:'Crew',exact:true})).toBeVisible();
+  await expect(page).toHaveURL(/\/admin\/crew$/);
 });

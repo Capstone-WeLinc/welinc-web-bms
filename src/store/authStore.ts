@@ -33,8 +33,9 @@ function subscribe(listener: () => void) {
   };
 }
 export const useAuthStore = Object.assign(
-  <T>(selector: (value: State) => T): T =>
-    selector(useSyncExternalStore(subscribe, () => state)),
+  function useSelectedAuthState<T>(selector: (value: State) => T): T {
+    return selector(useSyncExternalStore(subscribe, () => state));
+  },
   {
     getState: () => state,
     setState: (update: Partial<State>) => {
