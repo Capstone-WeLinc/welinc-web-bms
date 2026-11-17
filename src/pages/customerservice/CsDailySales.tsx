@@ -1,3 +1,4 @@
+import { apiProblem } from '../../lib/api-shapes';
 import ModalHeader from '../../components/ui/ModalHeader';
 import SalesReportDetailsDialog from '../../components/shared/SalesReportDetailsDialog';
 import TablePagination from '../../components/ui/TablePagination';
@@ -147,7 +148,7 @@ export default function CsDailySales() {
       toast.success('Refund request submitted for Admin approval.');
       setRefundEntry(null); setRefundAmount(''); setRefundReason('');
       setRefreshToken(value => value + 1);
-    } catch (error: any) { toast.error(error?.response?.data?.message || 'Unable to submit refund request.'); }
+    } catch (error: unknown) { toast.error(apiProblem(error).message || 'Unable to submit refund request.'); }
     finally { setRefundSaving(false); }
   }
 
@@ -212,9 +213,9 @@ export default function CsDailySales() {
       }
       setMethodChoices({});
       setRefreshToken((value) => value + 1);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Failed to submit records for collection approval', error);
-      toast.error(error?.response?.data?.message || 'Failed to submit records for collection approval.');
+      toast.error(apiProblem(error).message || 'Failed to submit records for collection approval.');
     } finally {
       setSubmitting(false);
     }

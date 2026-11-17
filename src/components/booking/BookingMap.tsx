@@ -1,3 +1,6 @@
+import * as Leaflet from 'leaflet';
+import 'leaflet/dist/leaflet.css';
+const mapWindow = window as Window & {google?: {maps: typeof google.maps}};
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { MapPin, Clock, Route, AlertTriangle, ExternalLink } from 'lucide-react';
 import { api } from '../../lib/api';
@@ -27,54 +30,16 @@ const CARTO_VOYAGER = 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}
 const CARTO_ATTR = '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/">CARTO</a>';
 const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string | undefined;
 
-/**
- * Dynamically load Leaflet library and styles at runtime to avoid
- * bundle-time missing package errors on machines where `npm install` hasn't been run.
- */
-function loadLeafletLibrary(): Promise<any> {
-  if (typeof window === 'undefined') return Promise.resolve(null);
-  if ((window as any).L) return Promise.resolve((window as any).L);
+async function loadLeafletLibrary() { return Leaflet; }
 
-  return new Promise((resolve) => {
-    // 1. Inject Leaflet CSS
-    if (!document.getElementById('leaflet-cdn-css')) {
-      const link = document.createElement('link');
-      link.id = 'leaflet-cdn-css';
-      link.rel = 'stylesheet';
-      link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
-      document.head.appendChild(link);
-    }
-
-    // 2. Inject Leaflet Script
-    const existingScript = document.getElementById('leaflet-cdn-js') as HTMLScriptElement | null;
-    if (existingScript) {
-      if ((window as any).L) {
-        resolve((window as any).L);
-      } else {
-        existingScript.addEventListener('load', () => resolve((window as any).L));
-        existingScript.addEventListener('error', () => resolve(null));
-      }
-      return;
-    }
-
-    const script = document.createElement('script');
-    script.id = 'leaflet-cdn-js';
-    script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
-    script.async = true;
-    script.onload = () => resolve((window as any).L);
-    script.onerror = () => resolve(null);
-    document.head.appendChild(script);
-  });
-}
-
-function loadGoogleMapsLibrary(): Promise<any> {
+function loadGoogleMapsLibrary(): Promise<typeof google.maps | null> {
   if (typeof window === 'undefined' || !GOOGLE_MAPS_API_KEY) return Promise.resolve(null);
-  if ((window as any).google?.maps) return Promise.resolve((window as any).google.maps);
+  if (mapWindow.google?.maps) return Promise.resolve(mapWindow.google.maps);
 
   return new Promise((resolve) => {
     const existingScript = document.getElementById('google-maps-js') as HTMLScriptElement | null;
     if (existingScript) {
-      existingScript.addEventListener('load', () => resolve((window as any).google?.maps ?? null), { once: true });
+      existingScript.addEventListener('load', () => resolve(mapWindow.google?.maps ?? null), { once: true });
       existingScript.addEventListener('error', () => resolve(null), { once: true });
       return;
     }
@@ -83,7 +48,7 @@ function loadGoogleMapsLibrary(): Promise<any> {
     script.id = 'google-maps-js';
     script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(GOOGLE_MAPS_API_KEY)}&v=weekly`;
     script.async = true;
-    script.onload = () => resolve((window as any).google?.maps ?? null);
+    script.onload = () => resolve(mapWindow.google?.maps ?? null);
     script.onerror = () => resolve(null);
     document.head.appendChild(script);
   });
@@ -107,9 +72,9 @@ function formatDuration(minutes: number): string {
 
 export default function BookingMap({ pickupAddress, deliveryAddress, pickupLandmark, deliveryLandmark, showMap = true }: Props) {
   const mapContainerRef = useRef<HTMLDivElement>(null);
-  const mapRef = useRef<any>(null);
-  const markersRef = useRef<any[]>([]);
-  const polylineRef = useRef<any>(null);
+  const mapRef = useRef<google.maps.Map | Leaflet.Map | null>(null);
+  const markersRef = useRef<Array<google.maps.Marker | Leaflet.Marker>>([]);
+  const polylineRef = useRef<google.maps.Polyline | Leaflet.Polyline | null>(null);
   const [routeInfo, setRouteInfo] = useState<RouteInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -121,20 +86,20 @@ export default function BookingMap({ pickupAddress, deliveryAddress, pickupLandm
   const cleanupMap = useCallback(() => {
     if (polylineRef.current) {
       try {
-        if (typeof polylineRef.current.setMap === 'function') polylineRef.current.setMap(null);
+        if ('setMap' in polylineRef.current) polylineRef.current.setMap(null);
         else polylineRef.current.remove();
-      } catch {}
+      } catch { /* The map may already be detached during a route change. */ }
       polylineRef.current = null;
     }
     markersRef.current.forEach(m => {
       try {
-        if (typeof m.setMap === 'function') m.setMap(null);
+        if ('setMap' in m) m.setMap(null);
         else m.remove();
-      } catch {}
+      } catch { /* The map may already be detached during a route change. */ }
     });
     markersRef.current = [];
     if (mapRef.current) {
-      try { mapRef.current.remove(); } catch {}
+      try { if('remove' in mapRef.current)mapRef.current.remove(); } catch { /* The map may already be detached during a route change. */ }
       mapRef.current = null;
     }
   }, []);
@@ -230,7 +195,7 @@ export default function BookingMap({ pickupAddress, deliveryAddress, pickupLandm
           }
 
           // Keep the OpenStreetMap map as a fallback if a Google browser key is absent or unavailable.
-          const L = (window as any).L;
+          const L = Leaflet;
           if (!L) {
             setLeafletAvailable(false);
             return;

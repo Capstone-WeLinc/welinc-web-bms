@@ -130,7 +130,7 @@ function isValidZip(zip: string) {
 }
 function isValidAddress(address: string) {
   if (!address) return true; // optional field — validate only if provided
-  return /^[\w\d\s\.,#\-/()]+$/.test(address.trim());
+  return /^[\w\d\s.,#\-/()]+$/.test(address.trim());
 }
 function isValidItemCount(value: string) {
   const count = Number(value);

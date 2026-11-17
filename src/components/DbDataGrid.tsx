@@ -1,6 +1,6 @@
 interface DbDataGridProps {
   columns: string[];
-  rows: any[];
+  rows: Array<Record<string, unknown> | unknown[]>;
   maxHeight?: string;
 }
 
@@ -9,7 +9,7 @@ export default function DbDataGrid({ columns, rows, maxHeight = '500px' }: DbDat
     return <p className="text-sm text-slate-500 py-4">No rows returned.</p>;
   }
 
-  const formatValue = (value: any): string => {
+  const formatValue = (value: unknown): string => {
     if (value === null || value === undefined) return 'NULL';
     if (typeof value === 'object') return JSON.stringify(value);
     return String(value);

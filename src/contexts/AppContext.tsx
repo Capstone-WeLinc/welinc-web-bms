@@ -3,9 +3,9 @@ import SessionMonitor from '../components/SessionMonitor';
 import React,{createContext,useContext,useState,useEffect,useCallback} from 'react';
 import type { User } from '../lib/types';
 import { getCurrentUser } from '../lib/auth';
-import { boot,signOut } from '../lib/session/session';
+import { boot } from '../lib/session/session';
+import { signOutFlow } from '../lib/session/signOutFlow';
 import { useAuthStore } from '../store/authStore';
-import { toast } from 'sonner';
 interface AppContextType{user:User|null;setUser:(user:User|null)=>void;logout:()=>void;darkMode:boolean;toggleDarkMode:()=>void;sidebarCollapsed:boolean;toggleSidebar:()=>void;}
 const AppContext=createContext<AppContextType|null>(null);
 let bootTask:Promise<void>|null=null;
@@ -20,7 +20,7 @@ export function AppProvider({children}:{children:React.ReactNode}){
   useEffect(()=>{document.documentElement.classList.toggle('dark',darkMode);},[darkMode]);
   const toggleDarkMode=useCallback(()=>setDarkMode(old=>{localStorage.setItem('welinc_theme',old?'light':'dark');return !old;}),[]);
   const toggleSidebar=useCallback(()=>setSidebarCollapsed(old=>{localStorage.setItem('welinc_sidebar',old?'expanded':'collapsed');return !old;}),[]);
-  const logout=useCallback(()=>{void signOut().then(result=>{if(result==='failed')toast.error('Could not sign out. Please try again.');});},[]);
+  const logout=useCallback(()=>{void signOutFlow({ask:true});},[]);
   const content=publicPage || state.status==='ready'?<>{children}<SessionMonitor/></>:state.status==='unavailable'?<main className="p-8"><h1>Sign-in service unavailable</h1><button onClick={()=>{bootTask=boot();}}>Retry</button></main>:<main className="p-8" aria-live="polite">Checking your session...</main>;
   return <AppContext.Provider value={{user,setUser,logout,darkMode,toggleDarkMode,sidebarCollapsed,toggleSidebar}}>{content}</AppContext.Provider>;
 }

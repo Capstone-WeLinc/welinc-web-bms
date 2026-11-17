@@ -115,7 +115,6 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const isOperationsNav = user?.role === 'Operations';
   const navigate = useNavigate();
   const location = useLocation();
-  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [approvalCount, setApprovalCount] = useState(0);
   const [submissionCount, setSubmissionCount] = useState(0);
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
@@ -257,7 +256,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           </button>
 
           <button
-            onClick={() => setShowLogoutConfirm(true)}
+            onClick={logout}
             aria-label="Sign out"
             className="mt-1 flex h-11 w-full items-center justify-center rounded-xl px-2 text-left text-sm font-medium text-red-400 transition-colors hover:bg-white/10 hover:text-red-300 group-hover:justify-start group-hover:gap-3"
           >
@@ -274,33 +273,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         {children}
       </div>
 
-      {showLogoutConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 px-4 py-6">
-          <div className="w-full max-w-sm rounded-3xl bg-white p-6 shadow-2xl ring-1 ring-slate-200">
-            <h2 className="text-lg font-semibold text-slate-900">Are you sure you want to log out?</h2>
-            <p className="mt-2 text-sm text-slate-600">
-              You will be redirected to Login Page.
-            </p>
-            <div className="mt-6 flex justify-end gap-3">
-              <button
-                onClick={() => setShowLogoutConfirm(false)}
-                className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => {
-                  setShowLogoutConfirm(false);
-                  logout();
-                }}
-                className="rounded-xl bg-[#1a1f6e] px-4 py-2 text-sm font-semibold text-white hover:bg-[#151b4f]"
-              >
-                Sign Out
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+
     </div>
   );
 }

@@ -1,3 +1,4 @@
+import { apiProblem } from '../../lib/api-shapes';
 import ModalHeader from '../../components/ui/ModalHeader';
 import { useEffect, useMemo, useState } from "react";
 import PageHeader from "../../components/pageheader/Pageheader";
@@ -155,8 +156,8 @@ export default function ServicesOffered() {
       );
       setOpen(false);
       await load();
-    } catch (error: any) {
-      toast.error(error.response?.data?.message || "Unable to save item");
+    } catch (error: unknown) {
+      toast.error(apiProblem(error).message || "Unable to save item");
     } finally {
       setSaving(false);
     }
@@ -197,8 +198,8 @@ export default function ServicesOffered() {
       toast.success("Item removed");
       setDeleteTarget(null);
       await load();
-    } catch (error: any) {
-      toast.error(error.response?.data?.message || "Unable to verify whether this item is used. Try again.");
+    } catch (error: unknown) {
+      toast.error(apiProblem(error).message || "Unable to verify whether this item is used. Try again.");
     } finally {
       setDeleting(false);
     }

@@ -1,4 +1,4 @@
-import { sessionToken,gatewayUrl } from './session-helpers';
+import { sessionToken } from './session-helpers';
 import { test, expect, type Page, type Response } from '@playwright/test';
 import { addDays, format } from 'date-fns';
 import { randomUUID } from 'node:crypto';

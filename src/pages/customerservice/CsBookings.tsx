@@ -266,7 +266,7 @@ export default function Bookings() {
     } catch (err) {
       console.error('Failed to create booking', err);
       toast.error('Unable to create booking', { description: getApiErrorMessage(err, 'Please check the booking details and try again.') });
-      try { const r = await api.get('/booking'); setBookings(r.data); } catch {}
+      try { const r = await api.get('/booking'); setBookings(r.data); } catch { /* Keep the current list when an optional refresh fails. */ }
     }
   }
 

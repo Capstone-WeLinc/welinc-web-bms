@@ -1,3 +1,5 @@
+import type { ApiCrew, ApiVehicle, ApiSchedule, ApiJobOrder } from '../../lib/api-shapes';
+import { apiProblem } from '../../lib/api-shapes';
 import { StatusFilter } from '../../components/ui/ListSearchFilters';
 import ModalHeader from '../../components/ui/ModalHeader';
 import TotalRow from '../../components/shared/TotalRow';
@@ -76,9 +78,9 @@ export default function OperationsJobOrder({ showKpis = false }: { showKpis?: bo
   const [jobOrders, setJobOrders] = useState<JobOrder[]>([]);
   const [schedules, setSchedules] = useState<ScheduleEntry[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
-  const [vehicles, setVehicles] = useState<any[]>([]);
-  const [drivers, setDrivers] = useState<any[]>([]);
-  const [helpers, setHelpers] = useState<any[]>([]);
+  const [vehicles, setVehicles] = useState<ApiVehicle[]>([]);
+  const [drivers, setDrivers] = useState<ApiCrew[]>([]);
+  const [helpers, setHelpers] = useState<ApiCrew[]>([]);
   const [loading, setLoading] = useState(true);
   const { user } = useApp();
   const [search, setSearch] = useState('');
@@ -97,9 +99,9 @@ export default function OperationsJobOrder({ showKpis = false }: { showKpis?: bo
       getJobOrders(),
       api.get<ScheduleEntry[]>('/job-order/assigned-bookings'),
       api.get<Booking[]>('/booking'),
-      api.get<any[]>('/bms/config/vehicles'),
-      api.get<any[]>('/bms/config/drivers'),
-      api.get<any[]>('/bms/config/helpers'),
+      api.get<ApiVehicle[]>('/bms/config/vehicles'),
+      api.get<ApiCrew[]>('/bms/config/drivers'),
+      api.get<ApiCrew[]>('/bms/config/helpers'),
     ])
       .then(([jobOrders, sRes, bRes, vRes, dRes, hRes]) => {
         if (mounted) {
@@ -161,7 +163,7 @@ export default function OperationsJobOrder({ showKpis = false }: { showKpis?: bo
   }
 
   function getVehicleLabel(schedule?: ScheduleEntry) {
-    const scheduleData = schedule as ScheduleEntry & Record<string, any>;
+    const scheduleData = schedule as ApiSchedule;
     const assignedVehicle = scheduleData?.vehicle || scheduleData?.assignedVehicle;
     if (!schedule?.vehicleId && !assignedVehicle) return '-';
     const vehicle = vehicles.find(item => item.id === schedule?.vehicleId);
@@ -171,7 +173,7 @@ export default function OperationsJobOrder({ showKpis = false }: { showKpis?: bo
   }
 
   function getDriverLabel(schedule?: ScheduleEntry) {
-    const scheduleData = schedule as ScheduleEntry & Record<string, any>;
+    const scheduleData = schedule as ApiSchedule;
     const assignedDriver = scheduleData?.assignedDriver || scheduleData?.driver;
     if (!schedule?.driverId && !assignedDriver) return '-';
     const driver = drivers.find(item => item.id === schedule?.driverId || item.empId === schedule?.driverId);
@@ -181,16 +183,16 @@ export default function OperationsJobOrder({ showKpis = false }: { showKpis?: bo
   function getJobOrderDetails(jobOrder: JobOrder) {
     const schedule = getScheduleForJobOrder(jobOrder);
     const booking = getBookingForJobOrder(jobOrder);
-    const jobOrderData = jobOrder as JobOrder & Record<string, any>;
-    const scheduleData = schedule as (ScheduleEntry & Record<string, any>) | undefined;
+    const jobOrderData = jobOrder as ApiJobOrder;
+    const scheduleData = schedule as (ApiSchedule) | undefined;
     const assignedVehicle = scheduleData?.vehicle || scheduleData?.assignedVehicle || jobOrderData.vehicle || jobOrderData.assignedVehicle;
     const vehicle = schedule?.vehicleId ? vehicles.find(item => item.id === schedule.vehicleId) : undefined;
     const assignedDriver = scheduleData?.assignedDriver || scheduleData?.driver || jobOrderData.assignedDriver || jobOrderData.driver;
     const assignedHelpers = Array.isArray(scheduleData?.assignedHelpers) ? scheduleData.assignedHelpers : Array.isArray(jobOrderData.helpers) ? jobOrderData.helpers : [];
     const helperIds = toTextList(schedule?.helperIds || jobOrderData.helperIds);
     const helperNames = helperIds.map(id => {
-      const helper = assignedHelpers.find((item: any) => item.id === id || item.empId === id)
-        || helpers.find((item: any) => item.id === id || item.empId === id);
+      const helper = assignedHelpers.find((item: ApiCrew) => item.id === id || item.empId === id)
+        || helpers.find((item: ApiCrew) => item.id === id || item.empId === id);
       return helper?.fullName || helper?.name || (looksLikeRecordId(id) ? 'Name unavailable' : id);
     });
     const vehicleRecord = vehicle || assignedVehicle;
@@ -269,8 +271,8 @@ export default function OperationsJobOrder({ showKpis = false }: { showKpis?: bo
       setShowGenerateDialog(false);
       setSelectedScheduleId('');
       await refresh();
-    } catch (err: any) {
-      toast.error(err.response?.data?.message || 'Failed to generate job order');
+    } catch (err: unknown) {
+      toast.error(apiProblem(err).message || 'Failed to generate job order');
     } finally {
       setGenerating(false);
     }

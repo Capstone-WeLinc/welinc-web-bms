@@ -1,3 +1,4 @@
+import { apiProblem } from '../../lib/api-shapes';
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { Loader2, Pencil } from 'lucide-react';
 import { toast } from 'sonner';
@@ -266,8 +267,8 @@ export default function CrewEditDialog({ target, onClose, onSaved }: {
       // The service reads dates as UTC days; hand back the Manila days that were actually saved.
       onSaved({ ...saved, joinDate: form.joinDate, licenseExpiry: isDriver ? form.licenseExpiry : saved.licenseExpiry });
       onClose();
-    } catch (error: any) {
-      toast.error(error?.response?.data?.message || `Unable to save the ${noun}.`);
+    } catch (error: unknown) {
+      toast.error(apiProblem(error).message || `Unable to save the ${noun}.`);
     } finally {
       setSaving(false);
     }

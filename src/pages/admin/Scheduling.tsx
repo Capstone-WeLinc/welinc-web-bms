@@ -1,3 +1,5 @@
+import type { ApiBooking, ApiVehicle } from '../../lib/api-shapes';
+import { apiProblem } from '../../lib/api-shapes';
 import { StatusFilter } from '../../components/ui/ListSearchFilters';
 import ModalHeader from '../../components/ui/ModalHeader';
 import ScheduleDetailsDialog from '../../components/shared/ScheduleDetailsDialog';
@@ -69,7 +71,7 @@ function isPastDate(entry: ScheduleEntry) {
 }
 
 function mapBookingToSchedule(booking: Booking): ScheduleEntry {
-  const bookingData = booking as Booking & Record<string, any>;
+  const bookingData = booking as ApiBooking;
   const bookingStatus = bookingData.bookingStatus ?? booking.status;
   const driverReference = bookingData.driverId ?? bookingData.driver_id ?? bookingData.assignedDriverId ?? bookingData.assigned_driver ?? bookingData.driver;
   const vehicleReference = bookingData.vehicleId ?? bookingData.vehicle_id ?? bookingData.assignedVehicleId ?? bookingData.assigned_vehicle;
@@ -128,8 +130,8 @@ export default function Scheduling({ canAssign = true }: { canAssign?: boolean }
   const [statusFilter, setStatusFilter] = useState<'All' | 'Assigned' | 'Unassigned'>('All');
   const [currentPage, setCurrentPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(8);
-  const [_isLoading, setIsLoading] = useState(true);
-  const [_loadError, setLoadError] = useState<string | null>(null);
+  const [, setIsLoading] = useState(true);
+  const [, setLoadError] = useState<string | null>(null);
 
 
   // Calendar state
@@ -277,11 +279,11 @@ export default function Scheduling({ canAssign = true }: { canAssign?: boolean }
 
   async function refreshVehicles() {
     try {
-      const response = await api.get<any[]>('/bms/config/vehicles');
+      const response = await api.get<ApiVehicle[]>('/bms/config/vehicles');
       setVehicles(response.data.map((vehicle) => ({
         id: vehicle.id,
-        plate: vehicle.plateNumber || vehicle.plate,
-        alias: vehicle.alias || vehicle.plateNumber || vehicle.plate,
+        plate: vehicle.plateNumber || vehicle.plate || '',
+        alias: vehicle.alias || vehicle.plateNumber || vehicle.plate || '',
         brand: vehicle.brand || '',
         model: vehicle.model || '',
         type: vehicle.type || 'Truck',
@@ -306,7 +308,7 @@ export default function Scheduling({ canAssign = true }: { canAssign?: boolean }
 
   async function refreshGarages() {
     try {
-      const response = await api.get<any[]>('/bms/config/garages');
+      const response = await api.get<Array<{id:string;name:string}>>('/bms/config/garages');
       setGarages(response.data.map(g => g.name));
     } catch (error) {
       console.error('Failed to load garages', error);
@@ -434,7 +436,7 @@ export default function Scheduling({ canAssign = true }: { canAssign?: boolean }
       }
       let hour24 = Number(timeParts[1]) % 12;
       if (timeParts[3].toUpperCase() === 'PM') hour24 += 12;
-      const payload: any = {
+      const payload: Record<string, unknown> = {
         dispatchTime: `${pad2(hour24)}:${timeParts[2]}`,
         garage: selectedGarage,
         deliveryType: selectedDeliveryType || undefined,
@@ -452,7 +454,7 @@ export default function Scheduling({ canAssign = true }: { canAssign?: boolean }
       setAssignTarget(null);
     } catch (error) {
       console.error('Failed to assign booking', error);
-      const responseMessage = (error as any)?.response?.data?.message;
+      const responseMessage = apiProblem(error).message;
       alert(Array.isArray(responseMessage) ? responseMessage.join('\n') : responseMessage || 'Failed to assign booking. Please try again.');
     }
   }

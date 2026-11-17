@@ -1,3 +1,4 @@
+import type { ApiJobOrder } from './api-shapes';
 import { api } from './api';
 import type { JobOrder } from './types';
 
@@ -5,7 +6,7 @@ type NewJobOrder = Pick<JobOrder, 'bookingId' | 'bookingNo' | 'client' | 'servic
 
 function normalizeApiJobOrders(value: unknown): JobOrder[] {
   if (!Array.isArray(value)) return [];
-  return value.map((item: any) => ({
+  return value.map((item: ApiJobOrder) => ({
     ...item,
     id: String(item.id || ''),
     jobOrderNo: item.jobOrderNo,
@@ -15,7 +16,7 @@ function normalizeApiJobOrders(value: unknown): JobOrder[] {
     serviceDate: item.serviceDate || item.date || '',
     truck: item.truck || item.vehicle?.plateNumber || item.vehicle?.plate || '-',
     team: item.team || item.driver?.fullName || item.driver?.name || '-',
-    totalAmount: item.totalAmount ?? item.amount ?? '0',
+    totalAmount: String(item.totalAmount ?? item.amount ?? '0'),
     paymentStatus: item.paymentStatus || 'Pending',
     status: String(item.status || '').toLowerCase() === 'distributed' ? 'Distributed' : 'Pending',
   }));

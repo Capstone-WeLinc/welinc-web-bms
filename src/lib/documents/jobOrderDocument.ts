@@ -136,17 +136,17 @@ function drawJobOrder(sheet: JobOrderSheet, sectionGap: number) {
   const rightEdge = pageWidth - PAGE_MARGIN;
   let y = 0;
 
-  const useFont = (size: number, bold: boolean) => {
+  const applyDocumentFont = (size: number, bold: boolean) => {
     doc.setFont('helvetica', bold ? 'bold' : 'normal');
     doc.setFontSize(size);
   };
   const lineHeight = (size: number) => size * MM_PER_POINT * 1.25;
   const wrap = (value: string, width: number, size: number, bold: boolean): string[] => {
-    useFont(size, bold);
+    applyDocumentFont(size, bold);
     return doc.splitTextToSize(printable(value) || '-', width);
   };
   const write = (value: string | string[], x: number, top: number, size: number, bold: boolean, color: Rgb, align: 'left' | 'right' = 'left') => {
-    useFont(size, bold);
+    applyDocumentFont(size, bold);
     doc.setTextColor(...color);
     doc.setLineHeightFactor(1.25);
     doc.text(typeof value === 'string' ? printable(value) : value, x, top + size * MM_PER_POINT, { align });

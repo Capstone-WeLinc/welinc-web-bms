@@ -1,3 +1,4 @@
+import { apiProblem } from '../../lib/api-shapes';
 import { useEffect,useState } from 'react';
 import { api } from '../../lib/api';
 import { eventLabel,type EventCatalog,type AccountEvent } from '../../lib/account-activity';
@@ -10,7 +11,7 @@ export default function ActivityLogs(){
   const load=async(more=false)=>{setLoading(true);setError('');try{
     if(tab==='work'){const {data}=await api.get('/activity-logs');setWork(data.items);}
     else{const {data}=await api.get<{data:AccountEvent[];nextCursor:string|null}>('/auth/activity',{params:{limit:50,...(more&&cursor?{cursor}:{}),...(search.length>=2?{q:search}:{}),...(category?{category}:{}),...(type?{type}:{}),...(from?{from}:{}),...(to?{to}:{})}});setAccounts(old=>more?[...old,...data.data]:data.data);setCursor(data.nextCursor);}
-  }catch(error:any){setError(error.response?.data?.code==='ADMIN_CODE_REQUIRED'?'Confirm your sign in in the portal to view account activity.':'Activity could not be loaded. Please retry.');}finally{setLoading(false);}};
+  }catch(error:unknown){setError(apiProblem(error).code==='ADMIN_CODE_REQUIRED'?'Confirm your sign in in the portal to view account activity.':'Activity could not be loaded. Please retry.');}finally{setLoading(false);}};
   useEffect(()=>{void load();},[tab,category,type,from,to]);
   const rows=tab==='accounts'?accounts.map(event=>({id:event.id,action:eventLabel(catalog,event,true),userName:event.user?.name??'',email:event.user?.email??'',createdAt:event.at??event.createdAt??'',ipAddress:event.address})):work.filter(row=>!search || [row.action,row.userName,row.email].some(text=>text.toLowerCase().includes(search.toLowerCase()))).filter(row=>(!from || row.createdAt.slice(0,10)>=from)&&(!to || row.createdAt.slice(0,10)<=to));
   return <main className="space-y-6 p-6"><h1 className="text-2xl font-semibold">Activity logs</h1><nav className="flex gap-3" aria-label="Activity source"><button aria-pressed={tab==='work'} onClick={()=>setTab('work')}>BMS work</button><button aria-pressed={tab==='accounts'} onClick={()=>setTab('accounts')}>Accounts</button></nav>

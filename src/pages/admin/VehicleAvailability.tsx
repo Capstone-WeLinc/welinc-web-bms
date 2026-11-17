@@ -1,3 +1,5 @@
+import type { ApiCrew } from '../../lib/api-shapes';
+import { apiProblem } from '../../lib/api-shapes';
 import { StatusFilter } from '../../components/ui/ListSearchFilters';
 import PageHeader from '../../components/pageheader/Pageheader';
 import { type ReactNode, useEffect, useState } from 'react';
@@ -76,7 +78,7 @@ function mapVehicleStatus(status?: string): VehicleStatus {
   }
 }
 
-function normalizeVehicle(vehicle: any): VehicleAvailabilityRecord {
+function normalizeVehicle(vehicle: Partial<Omit<VehicleAvailabilityRecord, 'status'>> & {status?:string}): VehicleAvailabilityRecord {
   const plate = vehicle.plateNumber || vehicle.plate || '—';
   return {
     id: vehicle.id || plate,
@@ -112,7 +114,7 @@ function normalizeVehicle(vehicle: any): VehicleAvailabilityRecord {
   };
 }
 
-function normalizeDriver(driver: any): Driver {
+function normalizeDriver(driver: ApiCrew): Driver {
   const fullName = driver.fullName || driver.name || '';
   return {
     id: driver.id || '',
@@ -189,7 +191,7 @@ export default function VehicleAvailability({ canManage = true }: { canManage?: 
 
     setVehiclesLoading(true);
     setVehiclesError(false);
-    api.get<any[]>('/bms/config/vehicles/availability')
+    api.get<Array<Partial<Omit<VehicleAvailabilityRecord, 'status'>> & {status?:string}>>('/bms/config/vehicles/availability')
       .then((response) => {
         if (mounted) setVehicles((response.data ?? []).map(normalizeVehicle));
       })
@@ -199,7 +201,7 @@ export default function VehicleAvailability({ canManage = true }: { canManage?: 
       })
       .finally(() => { if (mounted) setVehiclesLoading(false); });
 
-    api.get<any[]>('/bms/config/drivers')
+    api.get<ApiCrew[]>('/bms/config/drivers')
       .then((response) => {
         if (mounted && response.data.length > 0) {
           const fetched = response.data.map(normalizeDriver);
@@ -214,7 +216,7 @@ export default function VehicleAvailability({ canManage = true }: { canManage?: 
         console.error('Failed to load drivers, using sample data', error);
       });
 
-    api.get<any[]>('/bms/config/helpers')
+    api.get<Helper[]>('/bms/config/helpers')
       .then((response) => {
         if (mounted) setHelpers((response.data ?? []).map(normalizeHelper));
       })
@@ -1085,8 +1087,8 @@ function DeleteDialog({
     setDeleting(true);
     try {
       await onConfirm();
-    } catch (error: any) {
-      toast.error(error.response?.data?.message || `Unable to ${title.toLowerCase()}.`);
+    } catch (error: unknown) {
+      toast.error(apiProblem(error).message || `Unable to ${title.toLowerCase()}.`);
     } finally {
       setDeleting(false);
     }

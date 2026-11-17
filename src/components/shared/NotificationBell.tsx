@@ -61,8 +61,8 @@ async function loadCandidates(role: Role): Promise<{ candidates: Candidate[]; ac
   const deletions = getFeed<{ bookingNos?: string[] }>('deleted-bookings', '/integrations/welinc/notifications/deleted');
   if (role === 'Administrator') {
     const [feed, welincBookings, deletedBookings] = await Promise.all([
-      getFeed<{ items?: Array<Record<string, any>> }>('approvals', '/approvals', { type: 'all', page: 1, limit: 100 }),
-      getFeed<Array<Record<string, any>>>('welinc-bookings', '/integrations/welinc/notifications'),
+      getFeed<{ items?: Array<Record<string, unknown>> }>('approvals', '/approvals', { type: 'all', page: 1, limit: 100 }),
+      getFeed<Array<Record<string, unknown>>>('welinc-bookings', '/integrations/welinc/notifications'),
       deletions,
     ]);
     const candidates: Candidate[] = [];
@@ -108,9 +108,9 @@ async function loadCandidates(role: Role): Promise<{ candidates: Candidate[]; ac
 
   if (role === 'Customer Service') {
     const [bookings, submissions, postService, deletedBookings] = await Promise.all([
-      getFeed<Array<Record<string, any>>>('bookings', '/booking'),
-      getFeed<Array<Record<string, any>>>('submissions', '/approvals/mine'),
-      getFeed<Array<Record<string, any>>>('post-service', '/post-service'),
+      getFeed<Array<Record<string, unknown>>>('bookings', '/booking'),
+      getFeed<Array<Record<string, unknown>>>('submissions', '/approvals/mine'),
+      getFeed<Array<Record<string, unknown>>>('post-service', '/post-service'),
       deletions,
     ]);
     const candidates: Candidate[] = [];
@@ -165,8 +165,8 @@ async function loadCandidates(role: Role): Promise<{ candidates: Candidate[]; ac
   }
 
   const [schedules, jobOrders, deletedBookings] = await Promise.all([
-    getFeed<Array<Record<string, any>>>('schedules', '/scheduling'),
-    getFeed<Array<Record<string, any>>>('job-orders', '/job-order'),
+    getFeed<Array<Record<string, unknown>>>('schedules', '/scheduling'),
+    getFeed<Array<Record<string, unknown>>>('job-orders', '/job-order'),
     deletions,
   ]);
   const candidates: Candidate[] = [];
@@ -176,7 +176,7 @@ async function loadCandidates(role: Role): Promise<{ candidates: Candidate[]; ac
       candidates.push({
         source: schedules.source,
         key: `schedules:${String(item.id ?? item.bookingId)}`,
-        state: `${status}|${String(item.updatedAt ?? '')}|${String(item.driverId ?? '')}|${String(item.helperIds?.length ?? 0)}`,
+        state: `${status}|${String(item.updatedAt ?? '')}|${String(item.driverId ?? '')}|${String(Array.isArray(item.helperIds) ? item.helperIds.length : 0)}`,
         title: status === 'Unassigned' ? 'Booking needs team assignment' : 'Schedule updated',
         message: `${String(item.bookingNo ?? 'Booking')} · ${String(item.client ?? 'Client')} — ${formatStatus(status)}`,
         href: '/operations/scheduling',

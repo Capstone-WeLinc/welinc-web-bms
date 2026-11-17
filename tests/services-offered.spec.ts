@@ -1,4 +1,4 @@
-import { sessionToken,gatewayUrl } from './session-helpers';
+import { sessionToken } from './session-helpers';
 import { test, expect, type Page, type Locator } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
 

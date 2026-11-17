@@ -1,3 +1,4 @@
+import { apiProblem } from '../../lib/api-shapes';
 import { StatusFilter } from '../../components/ui/ListSearchFilters';
 import ModalHeader from '../../components/ui/ModalHeader';
 import ScheduleDetailsDialog from '../../components/shared/ScheduleDetailsDialog';
@@ -154,8 +155,8 @@ export default function OperationsScheduling() {
       // Refresh
       const { data } = await api.get<ScheduleEntry[]>('/scheduling');
       setSchedules(data ?? []);
-    } catch (err: any) {
-      toast.error(err.response?.data?.message || 'Failed to assign booking');
+    } catch (err: unknown) {
+      toast.error(apiProblem(err).message || 'Failed to assign booking');
     } finally {
       setAssigning(false);
     }

@@ -1,5 +1,4 @@
-// @ts-ignore: Cannot find declaration file for module 'react'
-import React from 'react';
+import { ConfirmProvider } from './components/shared/confirm/ConfirmProvider';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'sonner';
 import { useApp } from './contexts/AppContext';
@@ -41,6 +40,7 @@ function App() {
   return (
     <BrowserRouter>
       <>
+      <ConfirmProvider />
       <Routes>
         <Route path="/admin/users" element={<Navigate to="/admin/crew" replace />} />
         <Route path="/track/:bookingId" element={<BookingTracking />} />

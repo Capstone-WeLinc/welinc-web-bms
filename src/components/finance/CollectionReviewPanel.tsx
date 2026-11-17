@@ -1,3 +1,4 @@
+import { apiProblem } from '../../lib/api-shapes';
 import { useEffect, useState } from 'react';
 import { Check, Clock3, RotateCcw, X } from 'lucide-react';
 import { toast } from 'sonner';
@@ -33,8 +34,8 @@ export default function CollectionReviewPanel({ onChanged }: { onChanged: () => 
       await api.post(path, body);
       refresh(); onChanged();
       toast.success('Collection updated');
-    } catch (error: any) {
-      toast.error(error?.response?.data?.message || 'Unable to update collection');
+    } catch (error: unknown) {
+      toast.error(apiProblem(error).message || 'Unable to update collection');
     } finally { setBusy(null); }
   }
 

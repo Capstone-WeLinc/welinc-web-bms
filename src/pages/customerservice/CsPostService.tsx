@@ -2,7 +2,7 @@ import { StatusFilter } from '../../components/ui/ListSearchFilters';
 import ExportMenu from '../../components/ui/ExportMenu';
 import ModalHeader from '../../components/ui/ModalHeader';
 import TablePagination from '../../components/ui/TablePagination';
-﻿import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   CheckCircle2,
   Clock3,
