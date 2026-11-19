@@ -1,15 +1,9 @@
 import type { ApiCrew } from '../../lib/api-shapes';
-import { apiProblem } from '../../lib/api-shapes';
 import { StatusFilter } from '../../components/ui/ListSearchFilters';
 import PageHeader from '../../components/pageheader/Pageheader';
 import { type ReactNode, useEffect, useState } from 'react';
-import { AlertCircle, BusFront, CalendarDays, CheckCircle2, ChevronDown, Contact, Eye, MapPinned, MoreVertical, Pencil, Search, Trash2, Truck, User, UserCheck, UserRoundX, Users } from 'lucide-react';
+import { AlertCircle, BusFront, CalendarDays, CheckCircle2, ChevronDown, Contact, Eye, MapPinned, Search, Truck, User, UserCheck, UserRoundX, Users } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
-import { toast } from 'sonner';
-import CrewEditDialog from '../../components/availability/CrewEditDialog';
-import type { CrewMember, CrewRole } from '../../lib/api/crewService';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '../../components/ui/Dropdown';
-import DeleteConfirmModal from '../../components/shared/DeleteConfirmModal';
 import ModalHeader from '../../components/ui/ModalHeader';
 import { api } from '../../lib/api';
 import { formatPhoneLocal } from '../../lib/phone';
@@ -165,8 +159,7 @@ function getDisplayVehicleStatus(vehicle: Vehicle): DisplayVehicleStatus {
   return 'Available';
 }
 
-export default function VehicleAvailability({ canManage = true }: { canManage?: boolean }) {
-  const [editTarget, setEditTarget] = useState<{ role: CrewRole; id: string } | null>(null);
+export default function VehicleAvailability() {
   const [vehicles, setVehicles] = useState<VehicleAvailabilityRecord[]>([]);
   const [vehiclesLoading, setVehiclesLoading] = useState(true);
   const [vehiclesError, setVehiclesError] = useState(false);
@@ -181,10 +174,6 @@ export default function VehicleAvailability({ canManage = true }: { canManage?: 
   const [viewVehicle, setViewVehicle] = useState<VehicleAvailabilityRecord | null>(null);
   const [viewDriver, setViewDriver] = useState<Driver | null>(null);
   const [viewHelper, setViewHelper] = useState<Helper | null>(null);
-
-  const [deleteDriver, setDeleteDriver] = useState<Driver | null>(null);
-
-  const [deleteHelper, setDeleteHelper] = useState<Helper | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -290,45 +279,6 @@ export default function VehicleAvailability({ canManage = true }: { canManage?: 
     setStatusFilter('All');
   }
 
-  /** Show a saved edit on the card straight away, without reloading the tab. */
-  function applyCrewUpdate(member: CrewMember) {
-    const shared = {
-      fullName: member.fullName,
-      initials: getInitials(member.fullName),
-      contact: member.contact,
-      email: member.email,
-      status: member.status,
-      joinDate: member.joinDate,
-      emergencyName: member.emergencyName,
-      emergencyContact: member.emergencyContact,
-    };
-    if (member.role === 'DRIVER') {
-      setDrivers(prev => prev.map(driver => driver.id === member.id
-        ? { ...driver, ...shared, licenseNo: member.licenseNo, licenseType: member.licenseType, licenseExpiry: member.licenseExpiry }
-        : driver));
-    } else {
-      setHelpers(prev => prev.map(helper => (helper.id === member.id ? { ...helper, ...shared } : helper)));
-    }
-  }
-
-  async function softDeleteDriver() {
-    if (!deleteDriver) return;
-    await api.delete(`/bms/config/drivers/${deleteDriver.id}`);
-    setDrivers(prev => prev.filter(driver => driver.id !== deleteDriver.id));
-    setViewDriver(prev => (prev?.id === deleteDriver.id ? null : prev));
-    toast.success('Driver deleted', { description: `${deleteDriver.fullName} was removed from the list.` });
-    setDeleteDriver(null);
-  }
-
-  async function softDeleteHelper() {
-    if (!deleteHelper) return;
-    await api.delete(`/bms/config/helpers/${deleteHelper.id}`);
-    setHelpers(prev => prev.filter(helper => helper.id !== deleteHelper.id));
-    setViewHelper(prev => (prev?.id === deleteHelper.id ? null : prev));
-    toast.success('Helper deleted', { description: `${deleteHelper.fullName} was removed from the list.` });
-    setDeleteHelper(null);
-  }
-
   return (
     <div className="space-y-6">
       <PageHeader
@@ -380,9 +330,6 @@ export default function VehicleAvailability({ canManage = true }: { canManage?: 
               drivers={paginated as Driver[]}
               truckFor={driver => vehicles.find(vehicle => vehicle.driver?.id === driver.id) ?? null}
               onView={setViewDriver}
-              onEdit={driver => setEditTarget({ role: 'DRIVER', id: driver.id })}
-              onDelete={setDeleteDriver}
-              canManage={canManage}
             />
           )}
           {activeTab === 'helpers' && (
@@ -390,9 +337,6 @@ export default function VehicleAvailability({ canManage = true }: { canManage?: 
               helpers={paginated as Helper[]}
               truckFor={helper => vehicles.find(vehicle => vehicle.helpers?.some(member => member.id === helper.id)) ?? null}
               onView={setViewHelper}
-              onEdit={helper => setEditTarget({ role: 'HELPER', id: helper.id })}
-              onDelete={setDeleteHelper}
-              canManage={canManage}
             />
           )}
         </div>
@@ -418,20 +362,6 @@ export default function VehicleAvailability({ canManage = true }: { canManage?: 
       <VehicleDetails vehicle={viewVehicle} onClose={() => setViewVehicle(null)} />
       <DriverDetails driver={viewDriver} onClose={() => setViewDriver(null)} />
       <HelperDetails helper={viewHelper} onClose={() => setViewHelper(null)} />
-      <CrewEditDialog target={editTarget} onClose={() => setEditTarget(null)} onSaved={applyCrewUpdate} />
-
-      <DeleteDialog
-        title="Delete Driver"
-        person={deleteDriver}
-        onClose={() => setDeleteDriver(null)}
-        onConfirm={softDeleteDriver}
-      />
-      <DeleteDialog
-        title="Delete Helper"
-        person={deleteHelper}
-        onClose={() => setDeleteHelper(null)}
-        onConfirm={softDeleteHelper}
-      />
     </div>
   );
 }
@@ -479,15 +409,13 @@ function StatusPill({ status }: { status: DisplayVehicleStatus | CrewStatus }) {
 type CardDetail = { label: string; value: ReactNode; muted?: boolean };
 
 /** Services Offered card style: header (icon, name, status), labelled details, then the actions. */
-function AvailabilityCard({ badge, title, status, subtitle, details, onView, onEdit, onDelete }: {
+function AvailabilityCard({ badge, title, status, subtitle, details, onView }: {
   badge: ReactNode;
   title: string;
   status: DisplayVehicleStatus | CrewStatus;
   subtitle: string;
   details: CardDetail[];
   onView: () => void;
-  onEdit?: () => void;
-  onDelete?: () => void;
 }) {
   return (
     <article tabIndex={0} className="group flex flex-col rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition-all duration-150 hover:-translate-y-0.5 hover:border-[#1a1f6e] hover:shadow-lg hover:shadow-[#1a1f6e]/15 focus-visible:-translate-y-0.5 focus-visible:border-[#1a1f6e] focus-visible:shadow-lg focus-visible:shadow-[#1a1f6e]/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1a1f6e]/20">
@@ -500,7 +428,7 @@ function AvailabilityCard({ badge, title, status, subtitle, details, onView, onE
           <p className="mt-0.5 break-words text-sm text-slate-600">{subtitle}</p>
         </div>
         <StatusPill status={status} />
-        <CardActions title={title} onView={onView} onEdit={onEdit} onDelete={onDelete} />
+        <CardActions title={title} onView={onView} />
       </div>
 
       <dl className="mt-4 flex-1 space-y-1.5 border-t border-slate-100 pt-3">
@@ -516,30 +444,12 @@ function AvailabilityCard({ badge, title, status, subtitle, details, onView, onE
   );
 }
 
-/** Every card's actions grouped under one ellipsis, in the same menu style as User Management. */
-function CardActions({ title, onView, onEdit, onDelete }: { title: string; onView: () => void; onEdit?: () => void; onDelete?: () => void }) {
-  const item = 'flex cursor-pointer items-center gap-3 rounded-none px-4 py-2.5 text-sm text-[#344158] focus:bg-[#f8fafc]';
-  // A single action is shown as its own icon; the ellipsis is only for two or more.
-  if (!onEdit && !onDelete) {
-    return (
-      <button type="button" onClick={onView} aria-label={`View ${title}`} title="View details" className="-mr-2 -mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[#070b45] transition hover:bg-[#f1f5f9] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1a1f6e]/30">
-        <Eye size={18} strokeWidth={2.2} aria-hidden="true" />
-      </button>
-    );
-  }
+/** Cards are view-only here; drivers and helpers are added, edited and deleted in Team Management. */
+function CardActions({ title, onView }: { title: string; onView: () => void }) {
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <button type="button" aria-label={`Actions for ${title}`} className="-mr-2 -mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[#070b45] transition hover:bg-[#f1f5f9] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1a1f6e]/30">
-          <MoreVertical size={18} strokeWidth={2.4} aria-hidden="true" />
-        </button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-40 min-w-0 overflow-hidden rounded-xl border border-[#dce3ed] bg-white p-0 py-1.5 shadow-[0_10px_24px_rgba(15,23,42,0.22)]">
-        <DropdownMenuItem onClick={onView} className={item}><Eye className="h-4 w-4" aria-hidden="true" /> View</DropdownMenuItem>
-        {onEdit && <DropdownMenuItem onClick={onEdit} className={item}><Pencil className="h-4 w-4" aria-hidden="true" /> Edit</DropdownMenuItem>}
-        {onDelete && <DropdownMenuItem onClick={onDelete} className="flex cursor-pointer items-center gap-3 rounded-none px-4 py-2.5 text-sm text-[#ff4040] focus:bg-[#fff1f1] focus:text-[#ff4040]"><Trash2 className="h-4 w-4" aria-hidden="true" /> Delete</DropdownMenuItem>}
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <button type="button" onClick={onView} aria-label={`View ${title}`} title="View details" className="-mr-2 -mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[#070b45] transition hover:bg-[#f1f5f9] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1a1f6e]/30">
+      <Eye size={18} strokeWidth={2.2} aria-hidden="true" />
+    </button>
   );
 }
 
@@ -628,19 +538,13 @@ function DriverGrid({
   drivers,
   truckFor,
   onView,
-  onEdit,
-  onDelete,
-  canManage,
 }: {
   drivers: Driver[];
   /** The vehicle this driver is currently assigned to, if any. */
   truckFor: (driver: Driver) => VehicleAvailabilityRecord | null;
   onView: (driver: Driver) => void;
-  onEdit: (driver: Driver) => void;
-  onDelete: (driver: Driver) => void;
-  canManage: boolean;
 }) {
-  if (!drivers.length) return <EmptyCards message="No drivers found. Try another status or search term. New drivers are added in User Management." />;
+  if (!drivers.length) return <EmptyCards message="No drivers found. Try another status or search term. Drivers are added and edited in Team Management." />;
   return (
     <div className={CARD_GRID}>
       {drivers.map(driver => {
@@ -660,8 +564,6 @@ function DriverGrid({
               { label: 'Truck', value: plate || 'No truck assigned', muted: !plate },
             ]}
             onView={() => onView(driver)}
-            onEdit={canManage ? () => onEdit(driver) : undefined}
-            onDelete={canManage ? () => onDelete(driver) : undefined}
           />
         );
       })}
@@ -673,19 +575,13 @@ function HelperGrid({
   helpers,
   truckFor,
   onView,
-  onEdit,
-  onDelete,
-  canManage,
 }: {
   helpers: Helper[];
   /** The vehicle this helper is currently assigned to, if any. */
   truckFor: (helper: Helper) => VehicleAvailabilityRecord | null;
   onView: (helper: Helper) => void;
-  onEdit: (helper: Helper) => void;
-  onDelete: (helper: Helper) => void;
-  canManage: boolean;
 }) {
-  if (!helpers.length) return <EmptyCards message="No helpers found. Try another status or search term. New helpers are added in User Management." />;
+  if (!helpers.length) return <EmptyCards message="No helpers found. Try another status or search term. Helpers are added and edited in Team Management." />;
   return (
     <div className={CARD_GRID}>
       {helpers.map(helper => {
@@ -705,8 +601,6 @@ function HelperGrid({
               { label: 'Truck', value: plate || 'No truck assigned', muted: !plate },
             ]}
             onView={() => onView(helper)}
-            onEdit={canManage ? () => onEdit(helper) : undefined}
-            onDelete={canManage ? () => onDelete(helper) : undefined}
           />
         );
       })}
@@ -1068,40 +962,6 @@ function HelperDetails({ helper, onClose }: { helper: Helper | null; onClose: ()
         </section>
       )}
     </CrewDetailsDialog>
-  );
-}
-
-function DeleteDialog({
-  title,
-  person,
-  onClose,
-  onConfirm,
-}: {
-  title: string;
-  person: Driver | Helper | null;
-  onClose: () => void;
-  onConfirm: () => Promise<void>;
-}) {
-  const [deleting, setDeleting] = useState(false);
-  const confirm = async () => {
-    setDeleting(true);
-    try {
-      await onConfirm();
-    } catch (error: unknown) {
-      toast.error(apiProblem(error).message || `Unable to ${title.toLowerCase()}.`);
-    } finally {
-      setDeleting(false);
-    }
-  };
-  return (
-    <DeleteConfirmModal
-      open={!!person}
-      title={title}
-      itemName={person ? `${person.fullName}${person.empId ? ` (${person.empId})` : ''}` : ''}
-      deleting={deleting}
-      onCancel={onClose}
-      onConfirm={() => { void confirm(); }}
-    />
   );
 }
 

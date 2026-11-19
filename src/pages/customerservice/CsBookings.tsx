@@ -1,4 +1,5 @@
 import { StatusFilter } from '../../components/ui/ListSearchFilters';
+import DateRangeFilter from '../../components/ui/DateRangeFilter';
 import ModalHeader from '../../components/ui/ModalHeader';
 import { useState, useEffect, type FormEvent } from 'react';
 import { useSearchParams } from 'react-router-dom';
@@ -98,7 +99,6 @@ export default function Bookings() {
     return matchSearch && matchStatus && matchDateRange;
   });
 
-  const hasDateFilter = Boolean(dateFrom || dateTo);
 
   useEffect(() => {
     setCurrentPage(1);
@@ -324,26 +324,7 @@ export default function Bookings() {
         subtitle={<>View and manage all customer <span className="font-medium text-[#d4a72c]">bookings</span></>}
         subtitleClassName="mt-1 text-sm text-slate-500"
         action={<div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-          <div className="flex flex-col sm:flex-row sm:items-center gap-2 rounded-lg border border-slate-200 bg-transparent p-2">
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-semibold text-slate-500">From:</span>
-              <DatePicker value={dateFrom} max={dateTo || undefined} onChange={setDateFrom} className="min-w-[150px] [&>button]:!bg-transparent dark:[&>button]:!bg-transparent" />
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-semibold text-slate-500">To:</span>
-              <DatePicker value={dateTo} min={dateFrom || undefined} onChange={setDateTo} className="min-w-[150px] [&>button]:!bg-transparent dark:[&>button]:!bg-transparent" />
-            </div>
-            {hasDateFilter && (
-              <button
-                type="button"
-                onClick={() => { setDateFrom(''); setDateTo(''); }}
-                className="inline-flex h-9 w-9 items-center justify-center rounded-md text-slate-500 hover:bg-slate-100 hover:text-[#0a0f2e]"
-                title="Clear date filter"
-              >
-                <XCircle size={16} />
-              </button>
-            )}
-          </div>
+          <DateRangeFilter from={dateFrom} to={dateTo} onFromChange={setDateFrom} onToChange={setDateTo} onClear={() => { setDateFrom(''); setDateTo(''); }} />
           <button
             onClick={() => setShowWizard(true)}
             className="flex items-center gap-2 px-5 py-2.5 bg-[#1a1f6e] text-white rounded-lg font-semibold text-sm"

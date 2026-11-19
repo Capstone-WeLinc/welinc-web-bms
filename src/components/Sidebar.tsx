@@ -3,7 +3,7 @@ import { canSwitchSystem,switchSystemUrl } from '../lib/session/switchSystem';
 import { useEffect, useMemo, useState } from 'react';
 import { useApp } from '../contexts/AppContext';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { ChevronDown, LogOut } from 'lucide-react';
+import { ChevronDown, LayoutGrid, LogOut } from 'lucide-react';
 import { getNavItems, getRoleProfile } from '../lib/auth';
 import type { NavItem, NavSection } from '../lib/auth';
 import { api } from '../lib/api';
@@ -238,8 +238,20 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
         {/* Notifications and user profile */}
         <div className="border-t border-white/10 px-3 py-3 transition-[padding] duration-300 group-hover:px-5">
-          {canSwitchSystem(sessionUser) && <button type="button" onClick={()=>window.location.assign(switchSystemUrl())}>Switch system</button>}
-      <NotificationBell />
+          {canSwitchSystem(sessionUser) && (
+            <button
+              type="button"
+              onClick={() => window.location.assign(switchSystemUrl())}
+              aria-label="Switch system"
+              className="mb-1 flex h-11 w-full items-center justify-center rounded-xl px-2 text-left text-sm text-[#a8b4d9] transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#d4a72c]/60 group-hover:justify-start group-hover:gap-3"
+            >
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center">
+                <LayoutGrid aria-hidden="true" className="h-5 w-5" />
+              </span>
+              <span className="hidden whitespace-nowrap group-hover:block">Switch system</span>
+            </button>
+          )}
+          <NotificationBell />
           <button
             onClick={() => navigate(getRoleProfile(user?.role ?? 'Administrator'))}
             className="group/profile flex h-11 w-full items-center justify-center rounded-xl px-2 text-left transition-colors hover:bg-white/10 group-hover:justify-start group-hover:gap-3"
