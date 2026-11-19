@@ -6,10 +6,11 @@ import { Dialog, DialogContent } from '../ui/Dialog';
 import ModalHeader from '../ui/ModalHeader';
 import { DatePicker } from '../ui/DatePicker';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/Select';
-import { api } from '../../lib/api';
+import { loadCrew, manilaDay } from './crewData';
 import {
   CREW_STATUS_OPTIONS,
   LICENSE_TYPES,
+  createCrewMember,
   updateCrewMember,
   type CrewMember,
   type CrewRole,
@@ -54,41 +55,6 @@ type FormState = {
 };
 type FieldKey = keyof FormState;
 
-/**
- * The server stores a date as midnight in Manila (16:00 UTC the day before), so a timestamp is read
- * back as its Manila calendar day. Reading the UTC day instead would move the date back on every save.
- */
-const manilaDay = (value: unknown) => {
-  const text = value == null ? '' : String(value);
-  if (!text.includes('T')) return text.slice(0, 10);
-  const date = new Date(text);
-  if (Number.isNaN(date.getTime())) return text.slice(0, 10);
-  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Manila', year: 'numeric', month: '2-digit', day: '2-digit' }).format(date);
-};
-const str = (value: unknown) => (value == null ? '' : String(value));
-const toStatus = (value: unknown): CrewStatus => (value === 'On Duty' || value === 'On Leave' ? value : 'Available');
-
-/** Loads the crew list straight from the API so the dates keep their Manila calendar day. */
-async function loadCrew(role: CrewRole): Promise<CrewMember[]> {
-  const { data } = await api.get<Record<string, unknown>[]>(role === 'DRIVER' ? '/bms/config/drivers' : '/bms/config/helpers');
-  return (data ?? []).map(raw => ({
-    id: str(raw.id),
-    role,
-    empId: str(raw.empId),
-    fullName: str(raw.fullName ?? raw.name),
-    email: str(raw.email),
-    contact: str(raw.contact),
-    status: toStatus(raw.status ?? raw.crewStatus),
-    joinDate: manilaDay(raw.joinDate),
-    licenseNo: str(raw.licenseNo ?? raw.licenseNumber),
-    licenseType: str(raw.licenseType) || 'Professional',
-    licenseExpiry: manilaDay(raw.licenseExpiry),
-    emergencyName: str(raw.emergencyName),
-    emergencyContact: str(raw.emergencyContact),
-    updatedAt: raw.updatedAt ? str(raw.updatedAt) : null,
-  }));
-}
-
 const toForm = (member: CrewMember): FormState => ({
   fullName: member.fullName,
   email: member.email,
@@ -100,6 +66,20 @@ const toForm = (member: CrewMember): FormState => ({
   licenseExpiry: member.licenseExpiry,
   emergencyName: member.emergencyName,
   emergencyContact: member.emergencyContact,
+});
+
+/** A blank form for a new crew member: available, joining today (Manila). */
+const blankForm = (): FormState => ({
+  fullName: '',
+  email: '',
+  contact: '',
+  status: 'Available',
+  joinDate: manilaDay(new Date().toISOString()),
+  licenseNo: '',
+  licenseType: 'Professional',
+  licenseExpiry: '',
+  emergencyName: '',
+  emergencyContact: '',
 });
 
 function FormSection({ title, children }: { title: string; children: ReactNode }) {
@@ -166,8 +146,8 @@ function ChoiceField({ label, value, options, onChange }: { label: string; value
 }
 
 export default function CrewEditDialog({ target, onClose, onSaved }: {
-  /** The driver or helper to edit; null keeps the dialog closed. */
-  target: { role: CrewRole; id: string } | null;
+  /** The driver or helper to edit, or `id: null` to add a new one; null keeps the dialog closed. */
+  target: { role: CrewRole; id: string | null } | null;
   onClose: () => void;
   onSaved: (member: CrewMember) => void;
 }) {
@@ -179,9 +159,11 @@ export default function CrewEditDialog({ target, onClose, onSaved }: {
   const [saving, setSaving] = useState(false);
 
   const isDriver = target?.role === 'DRIVER';
+  const isNew = target?.id === null;
   const noun = isDriver ? 'driver' : 'helper';
 
   // Load the full record (emergency contact and license fields included) each time the dialog opens.
+  // Adding loads the list too, so a driver's license number is still checked for duplicates.
   useEffect(() => {
     if (!target) return;
     let active = true;
@@ -192,6 +174,11 @@ export default function CrewEditDialog({ target, onClose, onSaved }: {
     loadCrew(target.role)
       .then(list => {
         if (!active) return;
+        if (target.id === null) {
+          setForm(blankForm());
+          setDrivers(target.role === 'DRIVER' ? list : []);
+          return;
+        }
         const found = list.find(item => item.id === target.id);
         if (!found) { setLoadError(true); return; }
         setMember(found);
@@ -251,7 +238,7 @@ export default function CrewEditDialog({ target, onClose, onSaved }: {
     if (fields.some(key => fieldError(key))) return;
     setSaving(true);
     try {
-      const saved = await updateCrewMember(target.role, target.id, {
+      const input = {
         fullName: form.fullName.trim(),
         email: form.email.trim(),
         contact: form.contact,
@@ -262,8 +249,11 @@ export default function CrewEditDialog({ target, onClose, onSaved }: {
         licenseExpiry: form.licenseExpiry,
         emergencyName: form.emergencyName.trim(),
         emergencyContact: form.emergencyContact,
-      });
-      toast.success(`${isDriver ? 'Driver' : 'Helper'} updated`, { description: `${saved.fullName}'s details were saved.` });
+      };
+      const saved = target.id === null
+        ? await createCrewMember(target.role, input)
+        : await updateCrewMember(target.role, target.id, input);
+      toast.success(`${isDriver ? 'Driver' : 'Helper'} ${target.id === null ? 'added' : 'updated'}`, { description: `${saved.fullName}'s details were saved.` });
       // The service reads dates as UTC days; hand back the Manila days that were actually saved.
       onSaved({ ...saved, joinDate: form.joinDate, licenseExpiry: isDriver ? form.licenseExpiry : saved.licenseExpiry });
       onClose();
@@ -274,12 +264,13 @@ export default function CrewEditDialog({ target, onClose, onSaved }: {
     }
   }
 
-  const text = (key: FieldKey, label: string, maxLength: number, wide = false) => (
+  const text = (key: FieldKey, label: string, maxLength: number, placeholder: string, wide = false) => (
     <Field label={label} error={errorFor(key)} wide={wide}>
       <input
         aria-label={label}
         aria-invalid={Boolean(errorFor(key))}
         maxLength={maxLength}
+        placeholder={placeholder}
         value={form ? String(form[key]) : ''}
         onChange={event => set(key, event.target.value as never)}
         onBlur={() => touch(key)}
@@ -304,7 +295,7 @@ export default function CrewEditDialog({ target, onClose, onSaved }: {
   return (
     <Dialog open={!!target} onOpenChange={next => { if (!next) close(); }}>
       <DialogContent hideCloseButton aria-describedby={undefined} className="!flex !flex-col w-[calc(100%-2rem)] max-w-[640px] max-h-[calc(100dvh-2rem)] min-h-0 overflow-hidden rounded-2xl border-0 bg-white p-0 gap-0 shadow-xl">
-        <ModalHeader icon={Pencil} title={`Edit ${noun}`} subtitle={member?.empId || undefined} closeLabel={`Close edit ${noun}`} closeDisabled={saving} onClose={close} />
+        <ModalHeader icon={isNew ? undefined : Pencil} title={`${isNew ? 'Add' : 'Edit'} ${noun}`} subtitle={isNew ? undefined : member?.empId || undefined} closeLabel={`Close ${isNew ? 'add' : 'edit'} ${noun}`} closeDisabled={saving} onClose={close} />
 
         <form noValidate onSubmit={save} className="flex min-h-0 flex-1 flex-col">
           <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain bg-[#f1f4fa] p-4">
@@ -318,8 +309,8 @@ export default function CrewEditDialog({ target, onClose, onSaved }: {
               </div>
             ) : <>
               <FormSection title="Personal details">
-                {text('fullName', 'Full name', 100, true)}
-                {text('email', 'Email', 160)}
+                {text('fullName', 'Full name', 100, 'Enter full name', true)}
+                {text('email', 'Email', 160, 'e.g. juan.delacruz@email.com')}
                 <PhoneField label="Contact number" value={form.contact} error={errorFor('contact')} onChange={value => set('contact', value)} onBlur={() => touch('contact')} />
               </FormSection>
 
@@ -330,14 +321,14 @@ export default function CrewEditDialog({ target, onClose, onSaved }: {
 
               {isDriver && (
                 <FormSection title="License">
-                  {text('licenseNo', 'License number', 50)}
+                  {text('licenseNo', 'License number', 50, 'e.g. N01-23-456789')}
                   <ChoiceField label="License type" value={form.licenseType} options={LICENSE_TYPES} onChange={value => set('licenseType', value)} />
                   {date('licenseExpiry', 'License expiry')}
                 </FormSection>
               )}
 
               <FormSection title="Emergency contact">
-                {text('emergencyName', 'Contact name', 160)}
+                {text('emergencyName', 'Contact name', 160, 'Enter contact name')}
                 <PhoneField label="Contact number" value={form.emergencyContact} error={errorFor('emergencyContact')} onChange={value => set('emergencyContact', value)} onBlur={() => touch('emergencyContact')} />
               </FormSection>
             </>}
@@ -357,7 +348,7 @@ export default function CrewEditDialog({ target, onClose, onSaved }: {
               disabled={saving || !form}
               className="inline-flex h-10 w-fit items-center whitespace-nowrap rounded-lg bg-[#030848] px-5 text-sm font-semibold text-white hover:bg-[#141a6b] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#e8b800] disabled:opacity-50"
             >
-              {saving ? 'Saving...' : 'Save changes'}
+              {saving ? 'Saving...' : isNew ? `Add ${noun}` : 'Save changes'}
             </button>
           </footer>
         </form>

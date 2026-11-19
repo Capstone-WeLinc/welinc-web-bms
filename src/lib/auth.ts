@@ -79,7 +79,7 @@ export function getNavItems(role: UserRole): NavEntry[] {
           type: 'section', label: 'Administration', icon: ClipboardCheck, items: [
             { label: 'Approvals', path: '/admin/approvals', icon: CheckCheck },
             { label: 'User Accounts', path: `${import.meta.env.VITE_PORTAL_URL}/admin/people?system=BMS`, icon: Users },
-            { label: 'Crew', path: '/admin/crew', icon: UserCheck },
+            { label: 'Team Management', path: '/admin/crew', icon: UserCheck },
             { label: 'Activity Logs', path: '/admin/activity-logs', icon: SquareActivity },
           ],
         },
