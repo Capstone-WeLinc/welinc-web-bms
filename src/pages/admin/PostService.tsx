@@ -5,7 +5,7 @@ import ModalHeader from '../../components/ui/ModalHeader';
 import TablePagination from '../../components/ui/TablePagination';
 import PageHeader from '../../components/pageheader/Pageheader';
 import { useState, useEffect, useMemo } from 'react';
-import { Search, Eye, MoreVertical, CheckCircle, CheckCircle2, User as UserIcon, Info, TriangleAlert, FileText, FileSpreadsheet, ClipboardList, Clock3 } from 'lucide-react';
+import { Search, Eye, MoreVertical, CheckCircle, CheckCircle2, User as UserIcon, TriangleAlert, FileText, FileSpreadsheet, ClipboardList, Clock3 } from 'lucide-react';
 import { toast } from 'sonner';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -25,6 +25,7 @@ import { api } from '../../lib/api';
 import { PROTECTIVE_MATERIALS } from '../../components/booking/CostSummary';
 import { notifyBookingStatusUpdated } from '../../lib/booking-sync';
 import { COMPLETION_TEXT_MAX_WORDS } from '../../lib/completion-text-validation';
+import { remainingBalance } from '../../lib/booking';
 
 interface BookingWithPostService extends Booking {
   postServiceStatus?: string | null;
@@ -459,6 +460,8 @@ export default function PostService() {
                 <div className="mt-3 grid grid-cols-2 gap-x-5 gap-y-4">
                   <div><p className="text-sm text-slate-600">Payment</p><span className={`mt-1 inline-flex rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-wide ${viewBooking.paymentStatus?.toLowerCase() === 'paid' ? 'border-emerald-300 bg-emerald-50 text-emerald-700' : 'border-slate-200 bg-slate-50 text-slate-600'}`}>{viewBooking.paymentStatus || 'Not recorded'}</span></div>
                   <Detail label="Amount paid" value={viewBooking.amountPaid !== null && viewBooking.amountPaid !== undefined ? formatPeso(viewBooking.amountPaid) : 'Not recorded'} />
+                  <Detail label="Downpayment" value={toNumber(viewBooking.downpayment) > 0 ? formatPeso(toNumber(viewBooking.downpayment)) : 'None recorded'} />
+                  <Detail label="Remaining balance" value={formatPeso(viewBooking.remainingBalance ?? remainingBalance(viewBooking.amount, viewBooking.downpayment, viewBooking.amountPaid))} />
                 </div>
               </section>
 
@@ -497,13 +500,21 @@ export default function PostService() {
               <ModalHeader
                 icon={CheckCircle2}
                 title="Trip completion"
-                subtitle={[editBooking.bookingNo || '-', editBooking.client, editBooking.service].filter(Boolean).join(' · ')}
                 closeLabel="Close trip completion"
               />
 
               <div className="max-h-[70vh] space-y-3 overflow-y-auto bg-[#f1f4fa] p-4">
                 <section className="rounded-xl border border-slate-200/70 bg-white p-4">
-                  <div className="grid grid-cols-2 gap-4">
+                  <SectionHeading>Booking details</SectionHeading>
+                  <div className="mt-3 grid grid-cols-2 gap-x-5 gap-y-4 sm:grid-cols-3">
+                    <Detail label="Booking no." value={editBooking.bookingNo || 'Not recorded'} />
+                    <Detail label="Client" value={editBooking.client || 'Not recorded'} />
+                    <Detail label="Service" value={editBooking.service || 'Not recorded'} />
+                  </div>
+                </section>
+                <section className="rounded-xl border border-slate-200/70 bg-white p-4">
+                  <SectionHeading>Payment</SectionHeading>
+                  <div className="mt-3 grid grid-cols-2 gap-4">
                     <div>
                       <p className="text-sm text-slate-600">Payment method</p>
                       <p className="mt-1 text-base font-medium text-slate-900">{editBooking.paymentMethod || 'Not selected'}</p>
@@ -511,6 +522,21 @@ export default function PostService() {
                     <div>
                       <p className="text-sm text-slate-600">Booking amount</p>
                       <p className="mt-1 text-base font-medium text-slate-900">{formatCompletionAmount(editBooking.amount)}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-slate-600">Downpayment</p>
+                      <p className="mt-1 text-base font-medium text-slate-900">{toNumber(editBooking.downpayment) > 0 ? formatCompletionAmount(editBooking.downpayment) : 'None recorded'}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-slate-600">Remaining balance</p>
+                      <p className="mt-1 text-base font-semibold text-[#1a1f6e]">{formatCompletionAmount(remainingBalance(
+                        toNumber(editBooking.amount) + additionalMaterials.reduce(
+                          (total, name) => total + (PROTECTIVE_MATERIALS.find((material) => material.name === name)?.price || 0),
+                          0,
+                        ),
+                        editBooking.downpayment,
+                        editBooking.amountPaid,
+                      ))}</p>
                     </div>
                   </div>
                 </section>
@@ -544,22 +570,6 @@ export default function PostService() {
                         </label>
                       );
                     })}
-                  </div>
-                  <div className="mt-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 rounded-lg bg-[#eef0fa] px-3 py-2.5 text-sm text-[#1a1f6e]">
-                    <span>
-                      Add-ons {formatCompletionAmount(additionalMaterials.reduce(
-                        (total, name) => total + (PROTECTIVE_MATERIALS.find((material) => material.name === name)?.price || 0),
-                        0,
-                      ))}
-                    </span>
-                    <span className="font-medium">
-                      Updated total <span className="text-base font-semibold">{formatCompletionAmount(
-                        toNumber(editBooking.amount) + additionalMaterials.reduce(
-                          (total, name) => total + (PROTECTIVE_MATERIALS.find((material) => material.name === name)?.price || 0),
-                          0,
-                        ),
-                      )}</span>
-                    </span>
                   </div>
                 </section>
 
@@ -692,10 +702,6 @@ export default function PostService() {
                   </div>
                 </section>
 
-                <div className="flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-800">
-                  <Info size={16} className="shrink-0" aria-hidden="true" />
-                  <p>Record collections separately in Daily Sales after completing the work.</p>
-                </div>
                 {!finalizeValidation.isValid && (
                   <p className="text-sm text-red-600">Please {finalizeValidation.missing.join(', ')} to finalize.</p>
                 )}
