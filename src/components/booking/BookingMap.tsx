@@ -1,6 +1,6 @@
 import * as Leaflet from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-const mapWindow = window as Window & {google?: {maps: typeof google.maps}};
+const mapWindow = window as Window & {google?: {maps: typeof google.maps}; gm_authFailure?: () => void};
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { MapPin, Clock, Route, AlertTriangle, ExternalLink } from 'lucide-react';
 import { api } from '../../lib/api';
@@ -32,8 +32,23 @@ const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string |
 
 async function loadLeafletLibrary() { return Leaflet; }
 
+/**
+ * Google loads its script even for a refused key (wrong referrer, API not enabled, no billing),
+ * then calls `window.gm_authFailure` and paints its own error box over the map. Remember the
+ * refusal for this page load and tell mounted maps to redraw with Leaflet instead.
+ */
+const GOOGLE_AUTH_FAILED_EVENT = 'booking-map:google-auth-failed';
+let googleAuthFailed = false;
+if (typeof window !== 'undefined') {
+  mapWindow.gm_authFailure = () => {
+    googleAuthFailed = true;
+    console.warn('Google Maps refused the browser key; showing the OpenStreetMap map instead. See the Google Maps error above for the reason.');
+    window.dispatchEvent(new Event(GOOGLE_AUTH_FAILED_EVENT));
+  };
+}
+
 function loadGoogleMapsLibrary(): Promise<typeof google.maps | null> {
-  if (typeof window === 'undefined' || !GOOGLE_MAPS_API_KEY) return Promise.resolve(null);
+  if (typeof window === 'undefined' || !GOOGLE_MAPS_API_KEY || googleAuthFailed) return Promise.resolve(null);
   if (mapWindow.google?.maps) return Promise.resolve(mapWindow.google.maps);
 
   return new Promise((resolve) => {
@@ -107,6 +122,14 @@ export default function BookingMap({ pickupAddress, deliveryAddress, pickupLandm
   useEffect(() => {
     const refreshInterval = window.setInterval(() => setRefreshVersion(version => version + 1), 120_000);
     return () => window.clearInterval(refreshInterval);
+  }, []);
+
+  // A refused Google key: redraw on a fresh container, which now takes the Leaflet path
+  const [googleRefused, setGoogleRefused] = useState(googleAuthFailed);
+  useEffect(() => {
+    const onRefused = () => setGoogleRefused(true);
+    window.addEventListener(GOOGLE_AUTH_FAILED_EVENT, onRefused);
+    return () => window.removeEventListener(GOOGLE_AUTH_FAILED_EVENT, onRefused);
   }, []);
 
   useEffect(() => {
@@ -264,7 +287,7 @@ export default function BookingMap({ pickupAddress, deliveryAddress, pickupLandm
       cancelled = true;
       cleanupMap();
     };
-  }, [pickupAddress, deliveryAddress, pickupLandmark, deliveryLandmark, cleanupMap, refreshVersion]);
+  }, [pickupAddress, deliveryAddress, pickupLandmark, deliveryLandmark, cleanupMap, refreshVersion, googleRefused]);
 
   if (loading) {
     return (
