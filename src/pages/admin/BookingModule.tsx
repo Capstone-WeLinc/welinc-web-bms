@@ -20,7 +20,7 @@ import {
   DropdownMenuTrigger,
 } from '../../components/ui/Dropdown';
 import { api } from '../../lib/api';
-import { normalizeBookingStatus, formatBookingAmount } from '../../lib/booking';
+import { normalizeBookingStatus, formatBookingAmount, downpaymentChanged, downpaymentError, downpaymentValue } from '../../lib/booking';
 import { subscribeToBookingStatusUpdates } from '../../lib/booking-sync';
 import WelincReviewPanel from '../../components/booking/WelincReviewPanel';
 import { SearchInput, StatusFilter } from '../../components/ui/ListSearchFilters';
@@ -164,6 +164,7 @@ export default function Bookings() {
     if (['name', 'service', 'date', 'email', 'contact', 'pickup', 'delivery', 'items'].includes(key) && !value?.trim()) return 'This field is required.';
     if (key === 'email' && value && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) return 'The email address entered is invalid';
     if (key === 'contact' && value && !/^(?:\+63|0)9\d{9}$/.test(value)) return 'Enter a valid Philippine mobile number.';
+    if (key === 'downpayment') return downpaymentError(editBooking);
     return '';
   };
   const hasEditBookingChanges = Boolean(editBooking && editOriginal && (
@@ -179,13 +180,14 @@ export default function Bookings() {
     || (editBooking.itemDetails || undefined) !== (editOriginal.itemDetails || undefined)
     || (editBooking.specialInstructions || undefined) !== (editOriginal.specialInstructions || undefined)
     || Boolean(editBooking.permitRequired) !== Boolean(editOriginal.permitRequired)
+    || downpaymentChanged(editBooking, editOriginal)
   ));
 
   async function handleUpdateBooking(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!editBooking || savingBooking) return;
-    setEditTouched(new Set(['name', 'service', 'date', 'email', 'contact', 'pickup', 'delivery', 'items']));
-    if (['name', 'service', 'date', 'email', 'contact', 'pickup', 'delivery', 'items'].some(key => editError(key))) return;
+    setEditTouched(new Set(['name', 'service', 'date', 'email', 'contact', 'pickup', 'delivery', 'items', 'downpayment']));
+    if (['name', 'service', 'date', 'email', 'contact', 'pickup', 'delivery', 'items', 'downpayment'].some(key => editError(key))) return;
 
     setSavingBooking(true);
     const id = editBooking.id;
@@ -203,6 +205,7 @@ export default function Bookings() {
       itemDetails: editBooking.itemDetails || undefined,
       specialInstructions: editBooking.specialInstructions || undefined,
       permitRequired: Boolean(editBooking.permitRequired),
+      ...(downpaymentChanged(editBooking, editOriginal ?? editBooking) && { downpayment: downpaymentValue(editBooking) }),
     };
     try {
       const response = await api.put<Booking>(`/booking/${id}`, payload);

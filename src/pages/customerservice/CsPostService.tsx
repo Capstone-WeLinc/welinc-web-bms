@@ -12,7 +12,6 @@ import {
   Eye,
   MoreVertical,
   Search,
-  Info,
   TriangleAlert,
   WalletCards,
   FileText,
@@ -38,6 +37,7 @@ import { PROTECTIVE_MATERIALS } from '../../components/booking/CostSummary';
 import PageHeader from '../../components/pageheader/Pageheader';
 import { notifyBookingStatusUpdated } from '../../lib/booking-sync';
 import { COMPLETION_TEXT_MAX_WORDS, validateCompletionText } from '../../lib/completion-text-validation';
+import { remainingBalance } from '../../lib/booking';
 
 export interface CustomerServiceBooking extends Booking {
   postServiceStatus?: string | null;
@@ -150,6 +150,8 @@ function PostServiceDetails({ booking }: { booking: CustomerServiceBooking }) {
         <div className="mt-3 grid grid-cols-2 gap-x-5 gap-y-4">
           <div><p className="text-sm text-slate-600">Payment</p><span className={`mt-1 inline-flex rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-wide ${booking.paymentStatus?.toLowerCase() === 'paid' ? 'border-emerald-300 bg-emerald-50 text-emerald-700' : 'border-slate-200 bg-slate-50 text-slate-600'}`}>{booking.paymentStatus || 'Not recorded'}</span>{booking.paymentMethod && <p className="mt-1 text-sm text-slate-500">{booking.paymentMethod}</p>}</div>
           <Detail label="Amount paid" value={booking.amountPaid !== null && booking.amountPaid !== undefined ? formatAmount(booking.amountPaid) : 'Not recorded'} />
+          <Detail label="Downpayment" value={numericAmount(booking.downpayment) > 0 ? formatAmount(booking.downpayment) : 'None recorded'} />
+          <Detail label="Remaining balance" value={booking.remainingBalance != null ? formatAmount(booking.remainingBalance) : formatAmount(remainingBalance(booking.amount, booking.downpayment, booking.amountPaid))} />
         </div>
       </section>
       <section className="rounded-2xl border border-slate-200/70 bg-white p-4 shadow-sm">
@@ -509,14 +511,22 @@ export default function CsPostService() {
               titleId="trip-completion-title"
               icon={CheckCircle2}
               title="Trip completion"
-              subtitle={[selectedBooking.bookingNo ?? '-', selectedBooking.client, selectedBooking.service].filter(Boolean).join(' · ')}
               onClose={closeCompletion}
               closeLabel="Close trip completion"
             />
 
             <div className="max-h-[70vh] space-y-3 overflow-y-auto bg-[#f1f4fa] p-4">
               <section className="rounded-xl border border-slate-200/70 bg-white p-4">
-                <div className="grid grid-cols-2 gap-4">
+                <SectionHeading>Booking details</SectionHeading>
+                <div className="mt-3 grid grid-cols-2 gap-x-5 gap-y-4 sm:grid-cols-3">
+                  <Detail label="Booking no." value={selectedBooking.bookingNo || 'Not recorded'} />
+                  <Detail label="Client" value={selectedBooking.client || 'Not recorded'} />
+                  <Detail label="Service" value={selectedBooking.service || 'Not recorded'} />
+                </div>
+              </section>
+              <section className="rounded-xl border border-slate-200/70 bg-white p-4">
+                <SectionHeading>Payment</SectionHeading>
+                <div className="mt-3 grid grid-cols-2 gap-4">
                   <div>
                     <p className="text-sm text-slate-600">Payment method</p>
                     <p className="mt-1 text-base font-medium text-slate-900">{selectedBooking.paymentMethod || 'Not selected'}</p>
@@ -524,6 +534,15 @@ export default function CsPostService() {
                   <div>
                     <p className="text-sm text-slate-600">Booking amount</p>
                     <p className="mt-1 text-base font-medium text-slate-900">{formatCompletionAmount(selectedBooking.totalAmount ?? selectedBooking.amount)}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-slate-600">Downpayment</p>
+                    <p className="mt-1 text-base font-medium text-slate-900">{numericAmount(selectedBooking.downpayment) > 0 ? formatCompletionAmount(selectedBooking.downpayment) : 'None recorded'}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-slate-600">Remaining balance</p>
+                    <p className="mt-1 text-base font-semibold text-[#1a1f6e]">{formatCompletionAmount(remainingBalance(calculateUpdatedAmount(), selectedBooking.downpayment, selectedBooking.amountPaid))}</p>
+                    {numericAmount(selectedBooking.amountPaid) > 0 && <p className="mt-0.5 text-xs text-slate-500">After {formatCompletionAmount(selectedBooking.amountPaid)} already collected</p>}
                   </div>
                 </div>
               </section>
@@ -559,17 +578,6 @@ export default function CsPostService() {
                       </label>
                     );
                   })}
-                </div>
-                <div className="mt-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 rounded-lg bg-[#eef0fa] px-3 py-2.5 text-sm text-[#1a1f6e]">
-                  <span>
-                    Add-ons {formatCompletionAmount(additionalMaterials.reduce(
-                      (total, name) => total + (PROTECTIVE_MATERIALS.find((material) => material.name === name)?.price || 0),
-                      0,
-                    ))}
-                  </span>
-                  <span className="font-medium">
-                    Updated total <span className="text-base font-semibold">{formatCompletionAmount(calculateUpdatedAmount())}</span>
-                  </span>
                 </div>
               </section>
 
@@ -694,10 +702,6 @@ export default function CsPostService() {
                 </div>
               </section>
 
-              <div className="flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-800">
-                <Info size={16} className="shrink-0" aria-hidden="true" />
-                <p>Record collections separately in Daily Sales after completing the work.</p>
-              </div>
             </div>
 
             <div className="flex shrink-0 justify-end gap-2 border-t border-slate-200 bg-white px-4 py-3">
