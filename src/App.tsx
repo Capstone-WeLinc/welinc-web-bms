@@ -244,7 +244,7 @@ function App() {
           element={
             <ProtectedRoute allowedRoles={['Operations']}>
               <Layout>
-                <VehicleAvailability canManage={false} />
+                <VehicleAvailability />
               </Layout>
             </ProtectedRoute>
           }
