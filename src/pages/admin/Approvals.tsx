@@ -5,8 +5,9 @@ import { toast } from 'sonner';
 import { api } from '../../lib/api';
 import PageHeader from '../../components/pageheader/Pageheader';
 import TablePagination from '../../components/ui/TablePagination';
-import { CalendarOff, Check, CheckCheck, ClipboardCheck, Clock3, Coins, Eye, FileCheck2, Search, ShieldAlert, Siren } from 'lucide-react';
+import { AlarmClock, CalendarOff, Check, CheckCheck, ClipboardCheck, Clock3, Coins, Eye, FileCheck2, History, Search, ShieldAlert, Siren, X } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
+import DateRangeFilter from '../../components/ui/DateRangeFilter';
 import CrewLeaveDetails, { type CrewLeaveAudit, type CrewLeaveTrip } from '../../components/crewleave/CrewLeaveDetails';
 
 type ItemType = 'booking' | 'collection' | 'refund' | 'crew';
@@ -15,16 +16,22 @@ type ApprovalItem = {
   bookingNo: string; client: string; summary: string; amount: number | null;
   submittedAt: string; submittedBy: string; submittedByName?: string; submittedByRole?: string; status: string; decisionReason?: string | null;
   startDate?: string; endDate?: string;
+  /** History only. */
+  decidedAt?: string; decidedByName?: string;
 };
 type ApprovalCounts = {
   total: number; booking: number; collection: number; refund: number; crew: number; emergency: number; overdue: number;
   oldestAt: string | null; collectionAmount: number; refundAmount: number;
 };
 type PageResult = { items: ApprovalItem[]; total: number; page: number; limit: number };
-type FilterType = 'all' | ItemType | 'approved';
+type FilterType = 'all' | ItemType;
+type View = 'waiting' | 'history';
+type Decision = '' | 'approved' | 'rejected' | 'withdrawn';
+const DECISION_OPTIONS: { value: Decision; label: string }[] = [
+  { value: '', label: 'All' }, { value: 'approved', label: 'Approved' }, { value: 'rejected', label: 'Rejected' }, { value: 'withdrawn', label: 'Withdrawn' },
+];
 const APPROVAL_FILTER_OPTIONS: { value: FilterType; label: string }[] = [
   { value: 'all', label: 'All' },
-  { value: 'approved', label: 'Approved' },
   { value: 'booking', label: 'Bookings' },
   { value: 'collection', label: 'Collections' },
   { value: 'refund', label: 'Refunds' },
@@ -132,7 +139,9 @@ function DetailField({ label, value }: { label: string; value: string }) { retur
 
 export default function Approvals() {
   const [searchParams, setSearchParams] = useSearchParams();
+  const view: View = searchParams.get('view') === 'history' ? 'history' : 'waiting';
   const filter = APPROVAL_FILTER_OPTIONS.find(option => option.value === searchParams.get('type'))?.value ?? 'all';
+  const overdueOnly = view === 'waiting' && searchParams.get('overdue') === 'true';
   const [items, setItems] = useState<ApprovalItem[]>([]);
   const [counts, setCounts] = useState<ApprovalCounts>(ZERO_COUNTS);
   const [total, setTotal] = useState(0);
@@ -140,6 +149,9 @@ export default function Approvals() {
   const [error, setError] = useState(false);
   const [subtype, setSubtype] = useState('');
   const [search, setSearch] = useState('');
+  const [decision, setDecision] = useState<Decision>('');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(8);
   const [selected, setSelected] = useState<ApprovalItem | null>(null);
@@ -150,8 +162,12 @@ export default function Approvals() {
     if (!quiet) setLoading(true);
     setError(false);
     try {
+      // Dates filter Waiting by when it was sent, and History by when it was decided.
+      const params = view === 'history'
+        ? { status: 'history', type: filter, subtype: subtype || undefined, decision: decision || undefined, from: dateFrom || undefined, to: dateTo || undefined, search: search || undefined, page, limit }
+        : { type: filter, subtype: subtype || undefined, overdue: overdueOnly ? 'true' : undefined, from: dateFrom || undefined, to: dateTo || undefined, search: search || undefined, page, limit };
       const [listResponse, countResponse] = await Promise.all([
-        api.get<PageResult>('/approvals', { params: { type: filter === 'approved' ? 'all' : filter, status: filter === 'approved' ? 'approved' : undefined, subtype: subtype || undefined, search: search || undefined, page, limit } }),
+        api.get<PageResult>('/approvals', { params }),
         api.get<ApprovalCounts>('/approvals/counts'),
       ]);
       setItems(listResponse.data.items ?? []);
@@ -161,7 +177,7 @@ export default function Approvals() {
       setError(true);
       if (!quiet) toast.error('Unable to load approvals.');
     } finally { if (!quiet) setLoading(false); }
-  }, [filter, subtype, search, page, limit]);
+  }, [view, filter, subtype, overdueOnly, decision, dateFrom, dateTo, search, page, limit]);
 
   useEffect(() => { void load(); }, [load]);
   useEffect(() => {
@@ -178,12 +194,12 @@ export default function Approvals() {
     catch { toast.error('Unable to load approval details.'); setSelected(null); }
     finally { setDetailLoading(false); }
   };
-  const decide = async (decision: 'approve' | 'reject', reason?: string) => {
+  const decide = async (choice: 'approve' | 'reject', reason?: string) => {
     if (!selected) return;
     setBusy(true);
     try {
-      await api.post(`/approvals/${selected.type}/${encodeURIComponent(selected.id)}/${decision}`, decision === 'reject' ? { reason } : {});
-      toast.success(decision === 'approve' ? 'Approval completed.' : 'Item rejected.');
+      await api.post(`/approvals/${selected.type}/${encodeURIComponent(selected.id)}/${choice}`, choice === 'reject' ? { reason } : {});
+      toast.success(choice === 'approve' ? 'Approved. You can find it in History.' : 'Rejected. You can find it in History.');
       setSelected(null); setDetail(null); await load(true);
     } catch (requestError: unknown) {
       const message = (requestError as { response?: { data?: { message?: string } } })?.response?.data?.message;
@@ -191,23 +207,61 @@ export default function Approvals() {
     } finally { setBusy(false); }
   };
 
+  // "Total waiting" was the sum of the other cards; Overdue says what needs attention first.
   const cards = useMemo(() => [
-    { label: 'Total waiting', value: counts.total, tone: 'bg-amber-50 text-amber-700', icon: Clock3, target: 'all' as FilterType },
-    { label: 'Reschedules & cancellations', value: counts.booking, tone: 'bg-indigo-50 text-indigo-700', icon: FileCheck2, target: 'booking' as FilterType },
-    { label: 'Collections to verify', value: counts.collection, tone: 'bg-blue-50 text-blue-700', icon: CheckCheck, target: 'collection' as FilterType },
-    { label: 'Refund requests', value: counts.refund, tone: 'bg-red-50 text-red-700', icon: Coins, target: 'refund' as FilterType },
-    { label: counts.emergency ? `Crew leave (${counts.emergency} emergency)` : 'Crew leave', value: counts.crew, tone: counts.emergency ? 'bg-red-600 text-white' : 'bg-purple-50 text-purple-700', icon: counts.emergency ? Siren : CalendarOff, target: 'crew' as FilterType },
+    { key: 'overdue', label: 'Overdue (over 24 h)', value: counts.overdue, tone: counts.overdue ? 'bg-red-50 text-red-700' : 'bg-slate-100 text-slate-500', icon: AlarmClock },
+    { key: 'booking', label: 'Reschedules & cancellations', value: counts.booking, tone: 'bg-indigo-50 text-indigo-700', icon: FileCheck2 },
+    { key: 'collection', label: 'Collections to verify', value: counts.collection, tone: 'bg-blue-50 text-blue-700', icon: CheckCheck },
+    { key: 'refund', label: 'Refund requests', value: counts.refund, tone: 'bg-red-50 text-red-700', icon: Coins },
+    { key: 'crew', label: counts.emergency ? `Crew leave (${counts.emergency} emergency)` : 'Crew leave', value: counts.crew, tone: counts.emergency ? 'bg-red-600 text-white' : 'bg-purple-50 text-purple-700', icon: counts.emergency ? Siren : CalendarOff },
   ], [counts]);
 
+  // The date range sits in the header, so it stays put when switching tabs or cards.
+  const resetFilters = () => { setSubtype(''); setDecision(''); setPage(1); };
+  /** Cards always open the Waiting tab, filtered to what they count. */
+  const showWaiting = (key: string) => {
+    setSearchParams(key === 'overdue' ? { overdue: 'true' } : key === 'all' ? {} : { type: key });
+    resetFilters();
+  };
+  const chooseView = (next: View) => { setSearchParams(next === 'history' ? { view: 'history' } : {}); resetFilters(); };
   const chooseFilter = (value: FilterType) => {
-    setSearchParams(value === 'all' ? {} : { type: value });
+    const next: Record<string, string> = {};
+    if (view === 'history') next.view = 'history';
+    if (overdueOnly) next.overdue = 'true';
+    if (value !== 'all') next.type = value;
+    setSearchParams(next);
     setSubtype('');
     setPage(1);
   };
   const totalPages = Math.max(1, Math.ceil(total / limit));
+  // Same tab style as Activity Logs and Team Management.
+  const tab = (value: View, label: string, Icon: typeof Clock3) => (
+    <button type="button" role="tab" aria-selected={view === value} onClick={() => chooseView(value)}
+      className={`flex h-10 items-center gap-1.5 rounded-xl px-4 py-2 text-sm font-semibold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1a1f6e]/30 ${view === value ? 'bg-[#1a1f6e] text-white shadow-sm' : 'text-slate-600 hover:text-[#1a1f6e]'}`}>
+      <Icon size={17} aria-hidden="true" />{label}
+    </button>
+  );
+  const headings = view === 'history'
+    ? ['Booking / Client', 'Type', 'Details', 'Decision', 'Decided by', 'Decided on', 'Action']
+    : ['Booking / Client', 'Type', 'Details', 'Amount', 'Status', 'Waiting', 'Action'];
+  const clientCell = (item: ApprovalItem) => <td className="px-4 py-3 align-middle"><p className="font-medium text-slate-900">{item.bookingNo}</p><p className="text-sm text-slate-600">{item.client}</p></td>;
+  const typeCell = (item: ApprovalItem) => <td className="whitespace-nowrap px-4 py-3 align-middle text-sm text-slate-700">{item.type === 'crew' && item.subtype === 'emergency' ? <span className="inline-flex items-center gap-1 rounded-full bg-red-600 px-2 py-0.5 text-xs font-bold uppercase tracking-wide text-white"><Siren size={12} aria-hidden="true" />Emergency</span> : typeText(item)}</td>;
+  const detailsCell = (item: ApprovalItem) => <td className="max-w-[260px] px-4 py-3 align-middle text-sm text-slate-700"><span className="block truncate" title={item.summary}>{shortDetails(item)}</span></td>;
+  const viewCell = (item: ApprovalItem) => {
+    const label = view === 'waiting' ? 'Review' : 'View';
+    return <td className="px-4 py-3 align-middle"><button type="button" onClick={() => void openReview(item)} aria-label={`${label} ${item.bookingNo}`} title={label} className="inline-flex h-[34px] w-[34px] items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100 hover:text-[#1a1f6e] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1a1f6e]/20"><Eye className="h-4 w-4" aria-hidden="true" /></button></td>;
+  };
+  const emptyTitle = view === 'history' ? 'No decided requests found' : overdueOnly ? 'Nothing is overdue' : "You're all caught up";
+  const emptyText = view === 'history' ? 'Approved, rejected and withdrawn requests appear here.' : 'No approvals are waiting.';
+
   return <div className="space-y-5">
-    <PageHeader icon={ClipboardCheck} title="APPROVALS" subtitle={<>Review reschedules, cancellations, collection verifications, refund requests and crew leave <span className="font-medium text-[#b8860b]">that need your action.</span></>} subtitleClassName="mt-1 text-sm text-slate-500" />
-    <div className="grid auto-rows-fr gap-4 sm:grid-cols-2 lg:grid-cols-5 lg:gap-3 2xl:gap-4">{cards.map((card) => <SummaryCard key={card.label} {...card} onClick={() => chooseFilter(card.target)} />)}</div>
+    <PageHeader icon={ClipboardCheck} title="APPROVALS" subtitle={<>Review reschedules, cancellations, collection verifications, refund requests and crew leave <span className="font-medium text-[#b8860b]">that need your action.</span></>} subtitleClassName="mt-1 text-sm text-slate-500"
+      action={<DateRangeFilter from={dateFrom} to={dateTo} onFromChange={value => { setDateFrom(value); setPage(1); }} onToChange={value => { setDateTo(value); setPage(1); }} onClear={() => { setDateFrom(''); setDateTo(''); setPage(1); }} />} />
+    <div role="tablist" aria-label="Approvals" className="inline-flex rounded-2xl border border-slate-200 bg-slate-100 p-1.5">
+      {tab('waiting', 'Waiting', Clock3)}
+      {tab('history', 'History', History)}
+    </div>
+    <div className="grid auto-rows-fr gap-4 sm:grid-cols-2 lg:grid-cols-5 lg:gap-3 2xl:gap-4">{cards.map(({ key, ...card }) => <SummaryCard key={key} {...card} onClick={() => showWaiting(key)} />)}</div>
     <div className="flex flex-col gap-4 items-start justify-between lg:flex-row lg:items-center border border-b-0 border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-800">
       <div className="relative w-full lg:max-w-md">
         <Search size={18} aria-hidden="true" className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -220,6 +274,8 @@ export default function Approvals() {
         />
       </div>
       <div className="flex flex-wrap items-center gap-2">
+        {overdueOnly && <button type="button" onClick={() => showWaiting('all')} aria-label="Show all waiting requests" className="inline-flex h-10 items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3 text-sm font-medium text-red-700"><AlarmClock size={15} aria-hidden="true" />Overdue only<X size={14} aria-hidden="true" /></button>}
+        {view === 'history' && <StatusFilter options={DECISION_OPTIONS} value={decision} onChange={value => { setDecision(value); setPage(1); }} allValue="" allLabel="All Decisions" ariaLabel="Filter by decision" />}
         <StatusFilter options={APPROVAL_FILTER_OPTIONS} value={filter} onChange={chooseFilter} allValue="all" allLabel="All Requests" ariaLabel="Filter approvals" />
         {filter === 'booking' && <StatusFilter
           options={[{ value: '', label: 'All' }, { value: 'reschedule', label: 'Reschedule' }, { value: 'cancel', label: 'Cancellation' }]}
@@ -233,14 +289,17 @@ export default function Approvals() {
     </div>
     <section className="!mt-0 overflow-visible border border-slate-200 bg-white">
       {error ? <div className="flex min-h-64 flex-col items-center justify-center px-5 text-center"><ShieldAlert className="mb-2 h-8 w-8 text-amber-600" /><p className="text-sm font-medium text-slate-800">Approvals could not be loaded.</p><button onClick={() => void load()} className="mt-3 rounded-lg bg-[#030848] px-4 py-2 text-sm font-medium text-white">Retry</button></div> : <div className="overflow-x-auto"><table className="approval-data-table min-w-[1020px] w-full table-auto text-sm">
-        <thead><tr className="bg-[#1a1f6e]">{['Booking / Client', 'Type', 'Details', 'Amount', 'Status', filter === 'approved' ? 'Submitted' : 'Waiting', 'Action'].map((heading) => <th key={heading} className="whitespace-nowrap px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-white">{heading}</th>)}</tr></thead>
-        <tbody className="divide-y divide-slate-100">{loading ? <tr><td colSpan={7} className="px-4 py-14 text-center text-sm text-slate-500">Loading approvals...</td></tr> : items.length === 0 ? <tr><td colSpan={7} className="px-4 py-16 text-center"><CheckCheck className="mx-auto mb-2 h-8 w-8 text-emerald-600" /><p className="text-sm font-semibold text-slate-800">{filter === 'approved' ? 'No approved items found' : "You're all caught up"}</p><p className="mt-1 text-sm text-slate-500">{filter === 'approved' ? 'Approved requests will appear here.' : 'No approvals are waiting.'}</p></td></tr> : items.map((item) => {
-          const overdue = filter !== 'approved' && Date.now() - new Date(item.submittedAt).getTime() > 86400000;
-          return <tr key={`${item.type}-${item.id}`}><td className="px-4 py-3 align-middle"><p className="font-medium text-slate-900">{item.bookingNo}</p><p className="text-sm text-slate-600">{item.client}</p></td><td className="whitespace-nowrap px-4 py-3 align-middle text-sm text-slate-700">{item.type === 'crew' && item.subtype === 'emergency' ? <span className="inline-flex items-center gap-1 rounded-full bg-red-600 px-2 py-0.5 text-xs font-bold uppercase tracking-wide text-white"><Siren size={12} aria-hidden="true" />Emergency</span> : typeText(item)}</td><td className="max-w-[260px] px-4 py-3 align-middle text-sm text-slate-700"><span className="block truncate" title={item.summary}>{shortDetails(item)}</span></td><td className="whitespace-nowrap px-4 py-3 align-middle font-medium tabular-nums text-slate-900">{item.amount === null ? '-' : peso.format(item.amount)}</td><td className="px-4 py-3 align-middle"><ApprovalStatusBadge status={item.status} /></td><td className={`whitespace-nowrap px-4 py-3 align-middle tabular-nums ${overdue ? 'font-medium text-red-700' : 'text-slate-600'}`}>{filter === 'approved' ? manilaDateTime(item.submittedAt) : <>{ageLabel(item.submittedAt)}{overdue && <span className="ml-1">Overdue</span>}</>}</td><td className="px-4 py-3 align-middle"><button type="button" onClick={() => void openReview(item)} aria-label={`${['pending', 'requested', 'verifying'].includes(item.status.toLowerCase()) ? 'Review' : 'View'} ${item.bookingNo}`} title={['pending', 'requested', 'verifying'].includes(item.status.toLowerCase()) ? 'Review' : 'View'} className="inline-flex h-[34px] w-[34px] items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100 hover:text-[#1a1f6e] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1a1f6e]/20"><Eye className="h-4 w-4" aria-hidden="true" /></button></td></tr>;
+        <thead><tr className="bg-[#1a1f6e]">{headings.map((heading) => <th key={heading} className="whitespace-nowrap px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-white">{heading}</th>)}</tr></thead>
+        <tbody className="divide-y divide-slate-100">{loading ? <tr><td colSpan={7} className="px-4 py-14 text-center text-sm text-slate-500">Loading approvals...</td></tr> : items.length === 0 ? <tr><td colSpan={7} className="px-4 py-16 text-center">{view === 'history' ? <History className="mx-auto mb-2 h-8 w-8 text-slate-400" /> : <CheckCheck className="mx-auto mb-2 h-8 w-8 text-emerald-600" />}<p className="text-sm font-semibold text-slate-800">{emptyTitle}</p><p className="mt-1 text-sm text-slate-500">{emptyText}</p></td></tr> : items.map((item) => {
+          if (view === 'history') {
+            return <tr key={`${item.type}-${item.id}`}>{clientCell(item)}{typeCell(item)}{detailsCell(item)}<td className="px-4 py-3 align-middle"><span title={item.decisionReason ?? undefined}><ApprovalStatusBadge status={item.status} /></span></td><td className="whitespace-nowrap px-4 py-3 align-middle text-slate-700">{item.decidedByName ?? 'Unknown user'}</td><td className="whitespace-nowrap px-4 py-3 align-middle tabular-nums text-slate-600">{manilaDateTime(item.decidedAt)}</td>{viewCell(item)}</tr>;
+          }
+          const overdue = Date.now() - new Date(item.submittedAt).getTime() > 86400000;
+          return <tr key={`${item.type}-${item.id}`}>{clientCell(item)}{typeCell(item)}{detailsCell(item)}<td className="whitespace-nowrap px-4 py-3 align-middle font-medium tabular-nums text-slate-900">{item.amount === null ? '-' : peso.format(item.amount)}</td><td className="px-4 py-3 align-middle"><ApprovalStatusBadge status={item.status} /></td><td className={`whitespace-nowrap px-4 py-3 align-middle tabular-nums ${overdue ? 'font-medium text-red-700' : 'text-slate-600'}`}>{ageLabel(item.submittedAt)}{overdue && <span className="ml-1">Overdue</span>}</td>{viewCell(item)}</tr>;
         })}</tbody>
       </table></div>}
       {!error && <TablePagination page={page} totalPages={totalPages} totalItems={total} pageSize={limit} onPageChange={setPage} onPageSizeChange={(size) => { setLimit(size); setPage(1); }} />}
     </section>
-    {selected && (detailLoading ? <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/50 p-4"><div className="rounded-xl bg-white px-5 py-4 text-sm text-slate-600">Loading approval details...</div></div> : <ApprovalReview item={selected} detail={detail} busy={busy} onClose={() => { if (!busy) setSelected(null); }} onDecide={(decision, reason) => void decide(decision, reason)} />)}
+    {selected && (detailLoading ? <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/50 p-4"><div className="rounded-xl bg-white px-5 py-4 text-sm text-slate-600">Loading approval details...</div></div> : <ApprovalReview item={selected} detail={detail} busy={busy} onClose={() => { if (!busy) setSelected(null); }} onDecide={(choice, reason) => void decide(choice, reason)} />)}
   </div>;
 }
