@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Bell, CalendarClock, CalendarDays, CalendarX2, ClipboardCheck, ClipboardList, FilePlus2, FileSearch, FileText, IdCard, RotateCcw, Truck, UsersRound, Wallet } from 'lucide-react';
+import { Bell, CalendarClock, CalendarDays, CalendarOff, CalendarX2, Siren, ClipboardCheck, ClipboardList, FilePlus2, FileSearch, FileText, IdCard, RotateCcw, Truck, UsersRound, Wallet } from 'lucide-react';
 import { toast } from 'sonner';
 import { useApp } from '../../contexts/AppContext';
 import { api } from '../../lib/api';
@@ -164,9 +164,11 @@ async function loadCandidates(role: Role): Promise<{ candidates: Candidate[]; ac
     };
   }
 
-  const [schedules, jobOrders, deletedBookings] = await Promise.all([
+  const [schedules, jobOrders, crewLeave, crewConflicts, deletedBookings] = await Promise.all([
     getFeed<Array<Record<string, unknown>>>('schedules', '/scheduling'),
     getFeed<Array<Record<string, unknown>>>('job-orders', '/job-order'),
+    getFeed<Array<Record<string, unknown>>>('crew-leave', '/crew-leave/mine'),
+    getFeed<Array<Record<string, unknown>>>('crew-conflicts', '/crew-leave/conflicts'),
     deletions,
   ]);
   const candidates: Candidate[] = [];
@@ -198,9 +200,40 @@ async function loadCandidates(role: Role): Promise<{ candidates: Candidate[]; ac
       });
     }
   }
+  // Crew leave (spec bms/0003): Admin's decision on a request this user filed.
+  if (crewLeave.ok) {
+    for (const item of crewLeave.data ?? []) {
+      const status = String(item.status ?? 'Requested');
+      const kind = item.kind === 'EMERGENCY' ? 'emergency' : 'leave';
+      const verb = status === 'Approved' ? (kind === 'emergency' ? 'confirmed' : 'approved') : status === 'Rejected' ? 'rejected' : null;
+      candidates.push({
+        source: crewLeave.source,
+        key: `crew-leave:${String(item.id)}`,
+        state: `${status}|${String(item.decisionReason ?? '')}`,
+        title: verb ? `Crew ${kind} for ${String(item.crewName ?? 'crew')} ${verb}` : `Crew ${kind} for ${String(item.crewName ?? 'crew')} filed`,
+        // A decision arrives as a change to a known item, so the message itself says what Admin decided.
+        message: `${kind === 'emergency' ? 'Emergency' : 'Leave'} for ${String(item.crewName ?? 'crew')} ${verb ?? (status === 'Withdrawn' ? 'withdrawn' : 'waiting for Admin')} · ${String(item.startDate ?? '')}${item.endDate && item.endDate !== item.startDate ? ` to ${String(item.endDate)}` : ''}${item.decisionReason ? ` — ${String(item.decisionReason)}` : ''}`,
+        href: '/operations/for-approvals',
+        actionable: status === 'Rejected',
+      });
+    }
+  }
+  if (crewConflicts.ok) {
+    for (const item of crewConflicts.data ?? []) {
+      candidates.push({
+        source: crewConflicts.source,
+        key: `crew-conflicts:${String(item.bookingUuid)}:${String(item.crewId ?? item.crewName)}`,
+        state: `${String(item.requestId ?? '')}|${String(item.serviceDate ?? '')}`,
+        title: 'Crew conflict: reassign trip',
+        message: `${String(item.bookingNo ?? 'Booking')} on ${String(item.serviceDate ?? '')} — ${String(item.crewName ?? 'Crew')} is on ${item.kind === 'EMERGENCY' ? 'emergency leave' : 'leave'}`,
+        href: '/operations/scheduling',
+        actionable: true,
+      });
+    }
+  }
   return {
     candidates,
-    activeSources: [schedules, jobOrders, deletedBookings].filter((feed) => feed.ok).map((feed) => feed.source),
+    activeSources: [schedules, jobOrders, crewLeave, crewConflicts, deletedBookings].filter((feed) => feed.ok).map((feed) => feed.source),
     deletedBookingNos: deletedBookings.ok ? deletedBookings.data?.bookingNos ?? [] : [],
   };
 }
@@ -237,6 +270,8 @@ const NOTIFICATION_TONES = {
 // Checked in order, so the more specific subjects come first ("Booking cancel needs review" is a cancellation, not a generic review).
 const NOTIFICATION_KINDS: { match: string[]; icon: typeof Bell; tone: keyof typeof NOTIFICATION_TONES }[] = [
   { match: ['conflict'], icon: CalendarX2, tone: 'red' },
+  { match: ['emergency'], icon: Siren, tone: 'red' },
+  { match: ['crew', 'leave'], icon: CalendarOff, tone: 'violet' },
   { match: ['cancel'], icon: CalendarX2, tone: 'red' },
   { match: ['reschedule'], icon: CalendarClock, tone: 'indigo' },
   { match: ['refund'], icon: RotateCcw, tone: 'violet' },

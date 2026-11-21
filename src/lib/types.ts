@@ -180,6 +180,8 @@ export interface Driver {
   emergencyName: string;
   emergencyContact: string;
   vehicleId: string | null;
+  /** Last day of an approved leave or an emergency, when status is On Leave (spec bms/0003). */
+  leaveUntil?: string;
 }
 
 export interface Helper {
@@ -194,6 +196,8 @@ export interface Helper {
   joinDate: string;
   emergencyName?: string;
   emergencyContact?: string;
+  /** Last day of an approved leave or an emergency, when status is On Leave (spec bms/0003). */
+  leaveUntil?: string;
 }
 
 export type PaymentStatus = 'Paid' | 'Pending' | 'Partial';

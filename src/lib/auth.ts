@@ -107,15 +107,17 @@ export function getNavItems(role: UserRole): NavEntry[] {
     case 'Operations':
       return [
         { label: 'Dashboard', path: '/operations/dashboard', icon: LayoutDashboard, subtitle: 'Overview' },
+        // By priority: crew leave/emergencies first (someone may already be unavailable), then the dispatch flow.
+        { label: 'For Approvals', path: '/operations/for-approvals', icon: ClipboardCheck, subtitle: 'Leave & emergencies' },
         { label: 'Scheduling', path: '/operations/scheduling', icon: CalendarCheck, subtitle: 'Assign trucks & teams' },
-        { label: 'Vehicle & Team Availability', path: '/operations/vehicle-availability', icon: UserCheck, subtitle: 'View availability' },
         { label: 'Job Order', path: '/operations/job-order', icon: ClipboardList, subtitle: 'Generate & distribute' },
+        { label: 'Vehicle & Team Availability', path: '/operations/vehicle-availability', icon: UserCheck, subtitle: 'View availability' },
       ];
     case 'Customer Service':
       return [
         { label: 'Dashboard', path: '/cs/dashboard', icon: LayoutDashboard, subtitle: 'Overview' },
-        { label: 'Bookings', path: '/cs/bookings', icon: ClipboardList, subtitle: 'Clientrequests' },
         { label: 'For Approvals', path: '/cs/my-submissions', icon: ClipboardCheck, subtitle: 'Approval status' },
+        { label: 'Bookings', path: '/cs/bookings', icon: ClipboardList, subtitle: 'Client requests' },
         { label: 'Daily Sales', path: '/cs/daily-sales', icon: BarChart3, subtitle: 'Sales reports' },
         { label: 'Post Service', path: '/cs/post-service', icon: UserIcon, subtitle: 'Service confirmation' },
       ];
