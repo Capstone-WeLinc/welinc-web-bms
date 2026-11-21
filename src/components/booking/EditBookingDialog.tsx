@@ -2,7 +2,7 @@ import ModalHeader from '../ui/ModalHeader';
 import type { FormEvent, ReactNode } from 'react';
 import { Mail, Pencil, Phone, ShieldCheck } from 'lucide-react';
 import type { Booking } from '../../lib/types';
-import { normalizeBookingStatus } from '../../lib/booking';
+import { downpaymentError, formatBookingAmount, normalizeBookingStatus, remainingBalance } from '../../lib/booking';
 import { Dialog, DialogContent } from '../ui/Dialog';
 import { DatePicker } from '../ui/DatePicker';
 import { stepThreeTextarea, stepTwoControl, stepTwoInvalid } from './bookingFormStyles';
@@ -10,6 +10,11 @@ import { stepThreeTextarea, stepTwoControl, stepTwoInvalid } from './bookingForm
 const valueText = '!text-[15px] font-medium placeholder:font-normal';
 const lockedControl = 'h-[42px] w-full cursor-not-allowed rounded-lg border border-slate-200 bg-slate-50 px-3 text-[15px] text-slate-500';
 const subscriberDigits = (value: string) => value.replace(/\D/g, '').replace(/^63/, '').replace(/^0/, '').slice(0, 10);
+/** Keeps a peso amount typeable: digits, one decimal point, at most 2 decimals. */
+const pesoInput = (value: string) => {
+  const [whole, ...rest] = value.replace(/[^\d.]/g, '').split('.');
+  return rest.length ? `${whole.slice(0, 8)}.${rest.join('').slice(0, 2)}` : whole.slice(0, 8);
+};
 const formatSubscriber = (digits: string) => [digits.slice(0, 3), digits.slice(3, 6), digits.slice(6)].filter(Boolean).join(' ');
 
 type EditBookingDialogProps = {
@@ -122,6 +127,25 @@ export default function EditBookingDialog({ booking, onChange, touched, onTouch,
                       <input id="editDate" readOnly disabled value={dateValue} className={lockedControl} />
                     )}
                   </BookingFormField>
+                </div>
+              </BookingFormSection>
+
+              <BookingFormSection title="Payment">
+                <div className="grid grid-cols-1 gap-x-3.5 gap-y-3 sm:grid-cols-2">
+                  <BookingFormField id="editAmount" label="Booking amount">
+                    <input id="editAmount" readOnly disabled value={formatBookingAmount(booking.amount)} className={lockedControl} />
+                  </BookingFormField>
+                  <BookingFormField id="editDownpayment" label="Downpayment">
+                    <div className={`flex h-[42px] overflow-hidden rounded-lg border bg-white focus-within:ring-2 focus-within:ring-[#1a1f6e]/20 ${invalid('downpayment') ? 'border-red-400 focus-within:!ring-red-400/20' : 'border-slate-300 focus-within:border-[#1a1f6e]'}`}>
+                      <span className="flex shrink-0 items-center border-r border-slate-300 bg-slate-50 px-3 text-sm text-slate-700">₱</span>
+                      <input id="editDownpayment" inputMode="decimal" value={booking.downpayment ?? ''} onChange={e => { const value = pesoInput(e.target.value); onChange(prev => ({ ...prev, downpayment: value })); }} onBlur={() => onTouch('downpayment')} aria-invalid={invalid('downpayment')} placeholder="0.00" className={`h-full min-w-0 flex-1 bg-transparent px-3 text-slate-900 outline-none placeholder:text-slate-400 ${valueText}`} />
+                    </div>
+                    {message('downpayment')}
+                  </BookingFormField>
+                </div>
+                <div className="mt-3 flex items-center justify-between gap-3 rounded-lg bg-[#eef0fa] px-3 py-2.5 text-[#1a1f6e]" aria-live="polite">
+                  <span className="text-sm font-medium">Remaining balance</span>
+                  <span className="text-base font-semibold tabular-nums">{formatBookingAmount(remainingBalance(booking.amount, downpaymentError(booking) ? 0 : booking.downpayment))}</span>
                 </div>
               </BookingFormSection>
 

@@ -56,6 +56,9 @@ export interface Booking {
   date: string;
   status: BookingStatus;
   amount: string | number;
+  /** Amount the client paid before the trip; deducted from the balance in Post-Service. */
+  downpayment?: string | number | null;
+  remainingBalance?: number | null;
   discrepancyNote?: string;
   flagged?: boolean;
   amountCashCod?: string;

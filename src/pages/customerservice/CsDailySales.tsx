@@ -187,7 +187,6 @@ export default function CsDailySales() {
 
   const methodFor = (draft: DraftRow) => methodChoices[draft.bookingUuid] || draft.method;
   const readyToSubmit = worklist.ready.filter((draft) => methodFor(draft));
-  const missingMethod = worklist.ready.length - readyToSubmit.length;
 
   /** Sends every Daily Sales draft to Collection Approval in one step. */
   async function submitForApproval() {
@@ -351,14 +350,6 @@ export default function CsDailySales() {
           </button>
         </div>}
       />
-
-      {!loading && worklist.ready.length > 0 && (
-        <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
-          <span className="font-semibold">{worklist.ready.length} {worklist.ready.length === 1 ? 'record is' : 'records are'} ready to submit.</span>{' '}
-          Review them below, then use the Submit button to send them for collection approval.
-          {missingMethod > 0 && <> {missingMethod} {missingMethod === 1 ? 'record needs' : 'records need'} a payment method — set it from the row menu.</>}
-        </div>
-      )}
 
       {/* Summary */}
       <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm p-5">
