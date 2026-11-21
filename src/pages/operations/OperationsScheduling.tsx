@@ -67,6 +67,12 @@ export default function OperationsScheduling() {
   const minHelperSlots = Math.max(1, currentVehicle?.requiredHelpers ?? 1);
   const helperSlots = Math.max(minHelperSlots, helperSlotCount);
   const assignableHelpers = helpers.filter((helper) => helper.status === 'Available' || selectedHelpers.includes(helper.id));
+  // Crew leave (spec bms/0003): who is away on the trip's date, and which trips still have someone on leave.
+  const [crewLeave, setCrewLeave] = useState<Array<{ crewId: string; crewName: string; startDate: string; endDate: string; kind: string }>>([]);
+  const [crewConflicts, setCrewConflicts] = useState<Array<{ bookingUuid: string; crewName: string; kind: string }>>([]);
+  const assignDate = String(assignTarget?.date ?? '').slice(0, 10);
+  const leaveOn = (crewId: string) => crewLeave.find((item) => item.crewId === crewId && assignDate >= item.startDate && assignDate <= item.endDate);
+  const leaveNote = (crewId: string) => { const away = leaveOn(crewId); return away ? ` — on ${away.kind === 'EMERGENCY' ? 'emergency leave' : 'leave'} until ${away.endDate}` : ''; };
 
   const now = new Date();
   const [calYear, setCalYear] = useState(now.getFullYear());
@@ -97,6 +103,14 @@ export default function OperationsScheduling() {
       .finally(() => {
         if (mounted) setLoading(false);
       });
+    // Leave data only adds warnings; the page still works if it can't load.
+    Promise.all([api.get('/crew-leave/active'), api.get('/crew-leave/conflicts')])
+      .then(([active, conflicts]) => {
+        if (!mounted) return;
+        setCrewLeave(Array.isArray(active.data) ? active.data : []);
+        setCrewConflicts(Array.isArray(conflicts.data) ? conflicts.data : []);
+      })
+      .catch(() => undefined);
     return () => { mounted = false; };
   }, []);
 
@@ -271,7 +285,15 @@ export default function OperationsScheduling() {
                             <span className="text-sm text-slate-500">-</span>
                           )}
                         </td>
-                        <td className="px-4 py-2.5"><StatusBadge status={s.status} /></td>
+                        <td className="px-4 py-2.5">
+                          <StatusBadge status={s.status} />
+                          {crewConflicts.some((item) => item.bookingUuid === s.id) && (
+                            <span title={crewConflicts.filter((item) => item.bookingUuid === s.id).map((item) => `${item.crewName} is on ${item.kind === 'EMERGENCY' ? 'emergency leave' : 'leave'}`).join('\n')}
+                              className="mt-1 block w-fit whitespace-nowrap rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-700">
+                              Crew unavailable – reassign
+                            </span>
+                          )}
+                        </td>
                         <td className="px-4 py-2.5">
                           <div className="flex items-center justify-center">
                             <DropdownMenu>
@@ -417,11 +439,12 @@ export default function OperationsScheduling() {
                 </SelectTrigger>
                 <SelectContent>
                   {drivers.map((d) => (
-                    <SelectItem key={d.id} value={d.id}>{d.fullName}</SelectItem>
+                    <SelectItem key={d.id} value={d.id} disabled={!!leaveOn(d.id)}>{d.fullName}{leaveNote(d.id)}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
               {fieldError('driver', selectedDriver) && <p className="mt-1 text-xs font-medium text-red-600">Driver / Team is required.</p>}
+              {selectedDriver && leaveOn(selectedDriver) && <p className="mt-1 text-xs font-medium text-red-600">This driver is on leave on {assignDate}. Choose someone else.</p>}
             </div>
             {Array.from({ length: helperSlots }, (_, index) => {
               const required = index < minHelperSlots;
@@ -441,7 +464,7 @@ export default function OperationsScheduling() {
                         </SelectTrigger>
                         <SelectContent>
                           {assignableHelpers.filter((helper) => !selectedHelpers.includes(helper.id) || selectedHelpers[index] === helper.id).map((helper) => (
-                            <SelectItem key={helper.id} value={helper.id}>{helper.fullName}</SelectItem>
+                            <SelectItem key={helper.id} value={helper.id} disabled={!!leaveOn(helper.id)}>{helper.fullName}{leaveNote(helper.id)}</SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
@@ -456,6 +479,7 @@ export default function OperationsScheduling() {
                     )}
                   </div>
                   {showError && <p className="mt-1 text-xs font-medium text-red-600">Helper is required.</p>}
+                  {selectedHelpers[index] && leaveOn(selectedHelpers[index]) && <p className="mt-1 text-xs font-medium text-red-600">This helper is on leave on {assignDate}. Choose someone else.</p>}
                 </div>
               );
             })}

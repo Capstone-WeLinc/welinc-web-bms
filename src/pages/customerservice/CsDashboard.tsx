@@ -113,7 +113,7 @@ export default function CsDashboard() {
     return {
       waiting: submissions
         .filter(item => item.status === 'Pending' || item.status === 'Requested')
-        .sort((a, b) => new Date(a.submittedAt).getTime() - new Date(b.submittedAt).getTime()),
+        .sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime()),
       rejected: submissions.filter(item => item.status === 'Rejected').length,
       toVerify: postService.filter(booking => getCustomerServiceStatus(booking) === 'Pending Review').length,
       issues: postService.filter(booking => booking.issueReported === true && booking.postServiceStatus !== 'Finalized').length,
@@ -225,12 +225,17 @@ export default function CsDashboard() {
             )}
           </SectionCard>
 
-          <SectionCard title="Waiting for Admin">
+          <SectionCard title="Waiting for Admin" action={tasks.waiting.length > 0 && (
+            <button type="button" onClick={() => navigate(APPROVALS_PATH)} className="inline-flex h-9 w-fit items-center gap-1 whitespace-nowrap rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1a1f6e]/30">
+              View all<ChevronRight size={15} aria-hidden="true" />
+            </button>
+          )}>
             {tasks.waiting.length === 0 ? (
               <p className="flex items-center gap-2 py-2 text-sm text-slate-600"><Clock3 className="h-5 w-5 shrink-0 text-slate-400" aria-hidden="true" />{loading ? 'Loading...' : 'No requests waiting for a decision.'}</p>
             ) : (
+              /* Only the newest few; the full list is on For Approvals. */
               <ul className="divide-y divide-slate-100">
-                {tasks.waiting.map(item => (
+                {tasks.waiting.slice(0, VISIBLE_LATEST).map(item => (
                   <li key={`${item.type}-${item.id}`} className="py-2.5 first:pt-0 last:pb-0">
                     <span className="block break-words text-sm font-medium text-slate-900">{item.client}</span>
                     <span className="block text-sm text-slate-600">{requestLabel(item)} · {item.bookingNo}</span>

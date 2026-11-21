@@ -127,6 +127,7 @@ function normalizeDriver(driver: ApiCrew): Driver {
     emergencyName: driver.emergencyName || '',
     emergencyContact: driver.emergencyContact || '',
     vehicleId: driver.vehicleId || null,
+    leaveUntil: driver.leaveUntil,
   };
 }
 
@@ -215,6 +216,20 @@ export default function VehicleAvailability() {
       mounted = false;
     };
   }, [vehicleRetry]);
+
+  // Statuses change when Operations files leave or an emergency (spec bms/0003), so refresh quietly.
+  useEffect(() => {
+    const refresh = () => {
+      if (document.visibilityState !== 'visible') return;
+      api.get<ApiCrew[]>('/bms/config/drivers').then((response) => { if (response.data.length > 0) setDrivers(response.data.map(normalizeDriver)); }).catch(() => undefined);
+      api.get<Helper[]>('/bms/config/helpers').then((response) => setHelpers((response.data ?? []).map(normalizeHelper))).catch(() => undefined);
+      api.get<Array<Partial<Omit<VehicleAvailabilityRecord, 'status'>> & {status?:string}>>('/bms/config/vehicles/availability').then((response) => setVehicles((response.data ?? []).map(normalizeVehicle))).catch(() => undefined);
+    };
+    const timer = window.setInterval(refresh, 60000);
+    window.addEventListener('focus', refresh);
+    document.addEventListener('visibilitychange', refresh);
+    return () => { window.clearInterval(timer); window.removeEventListener('focus', refresh); document.removeEventListener('visibilitychange', refresh); };
+  }, []);
 
   const activeFilters = activeTab === 'vehicles' ? VEHICLE_FILTERS : activeTab === 'helpers' ? HELPER_FILTERS : DRIVER_FILTERS;
   const searchPlaceholder = activeTab === 'vehicles'
@@ -559,6 +574,7 @@ function DriverGrid({
             status={displayHelperStatus(driver.status)}
             subtitle={[driver.empId, driver.licenseType].filter(Boolean).join(' · ') || 'Not recorded'}
             details={[
+              ...(driver.leaveUntil ? [{ label: 'On leave until', value: formatDriverModalDate(driver.leaveUntil) }] : []),
               { label: 'Contact', value: notRecorded(contact), muted: !contact },
               { label: 'License', value: driver.licenseExpiry ? <LicenseExpiry value={driver.licenseExpiry} /> : 'Not recorded', muted: !driver.licenseExpiry },
               { label: 'Truck', value: plate || 'No truck assigned', muted: !plate },
@@ -596,6 +612,7 @@ function HelperGrid({
             status={displayHelperStatus(helper.status)}
             subtitle={helper.empId || 'Not recorded'}
             details={[
+              ...(helper.leaveUntil ? [{ label: 'On leave until', value: formatDriverModalDate(helper.leaveUntil) }] : []),
               { label: 'Contact', value: notRecorded(contact), muted: !contact },
               { label: 'Joined', value: helper.joinDate ? formatDriverModalDate(helper.joinDate) : 'Not recorded', muted: !helper.joinDate },
               { label: 'Truck', value: plate || 'No truck assigned', muted: !plate },
@@ -875,6 +892,7 @@ function DriverDetails({ driver, onClose }: { driver: Driver | null; onClose: ()
       ]}
     >
       {driver && <>
+        {driver.leaveUntil && <p className="rounded-xl border border-purple-200 bg-purple-50 px-4 py-3 text-sm text-purple-800">On leave until <span className="font-semibold">{formatDriverModalDate(driver.leaveUntil)}</span>. They can’t be assigned to trips until then.</p>}
         <section className="rounded-2xl border border-slate-200/70 bg-white p-4 shadow-sm">
           <VehicleModalSectionTitle>Contact details</VehicleModalSectionTitle>
           <div className="mt-2">
@@ -952,7 +970,8 @@ function HelperDetails({ helper, onClose }: { helper: Helper | null; onClose: ()
         { label: 'Join date', value: recordedDate(helper?.joinDate) },
       ]}
     >
-      {helper && (
+      {helper && <>
+        {helper.leaveUntil && <p className="rounded-xl border border-purple-200 bg-purple-50 px-4 py-3 text-sm text-purple-800">On leave until <span className="font-semibold">{formatDriverModalDate(helper.leaveUntil)}</span>. They can’t be assigned to trips until then.</p>}
         <section className="rounded-2xl border border-slate-200/70 bg-white p-4 shadow-sm">
           <VehicleModalSectionTitle>Emergency contact</VehicleModalSectionTitle>
           <div className="mt-2">
@@ -960,7 +979,7 @@ function HelperDetails({ helper, onClose }: { helper: Helper | null; onClose: ()
             <DriverContactRow label="Contact number" value={phone(helper.emergencyContact)} last />
           </div>
         </section>
-      )}
+      </>}
     </CrewDetailsDialog>
   );
 }

@@ -5,17 +5,19 @@ import { toast } from 'sonner';
 import { api } from '../../lib/api';
 import PageHeader from '../../components/pageheader/Pageheader';
 import TablePagination from '../../components/ui/TablePagination';
-import { Check, CheckCheck, ClipboardCheck, Clock3, Coins, Eye, FileCheck2, Search, ShieldAlert } from 'lucide-react';
+import { CalendarOff, Check, CheckCheck, ClipboardCheck, Clock3, Coins, Eye, FileCheck2, Search, ShieldAlert, Siren } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
+import CrewLeaveDetails, { type CrewLeaveAudit, type CrewLeaveTrip } from '../../components/crewleave/CrewLeaveDetails';
 
-type ItemType = 'booking' | 'collection' | 'refund';
+type ItemType = 'booking' | 'collection' | 'refund' | 'crew';
 type ApprovalItem = {
   id: string; type: ItemType; subtype: string | null; bookingId?: string;
   bookingNo: string; client: string; summary: string; amount: number | null;
   submittedAt: string; submittedBy: string; submittedByName?: string; submittedByRole?: string; status: string; decisionReason?: string | null;
+  startDate?: string; endDate?: string;
 };
 type ApprovalCounts = {
-  total: number; booking: number; collection: number; refund: number; overdue: number;
+  total: number; booking: number; collection: number; refund: number; crew: number; emergency: number; overdue: number;
   oldestAt: string | null; collectionAmount: number; refundAmount: number;
 };
 type PageResult = { items: ApprovalItem[]; total: number; page: number; limit: number };
@@ -26,9 +28,10 @@ const APPROVAL_FILTER_OPTIONS: { value: FilterType; label: string }[] = [
   { value: 'booking', label: 'Bookings' },
   { value: 'collection', label: 'Collections' },
   { value: 'refund', label: 'Refunds' },
+  { value: 'crew', label: 'Crew leave' },
 ];
 
-const ZERO_COUNTS: ApprovalCounts = { total: 0, booking: 0, collection: 0, refund: 0, overdue: 0, oldestAt: null, collectionAmount: 0, refundAmount: 0 };
+const ZERO_COUNTS: ApprovalCounts = { total: 0, booking: 0, collection: 0, refund: 0, crew: 0, emergency: 0, overdue: 0, oldestAt: null, collectionAmount: 0, refundAmount: 0 };
 const peso = new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' });
 const manilaDateTime = (value?: string | null) => value ? new Intl.DateTimeFormat('en-PH', { timeZone: 'Asia/Manila', dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value)) : 'Not available';
 const ageLabel = (value: string) => {
@@ -36,16 +39,30 @@ const ageLabel = (value: string) => {
   return hours >= 24 ? `${Math.floor(hours / 24)}d` : `${hours}h`;
 };
 const subtypeLabel = (value: string | null) => ({ reschedule: 'Reschedule', cancel: 'Cancellation' }[value ?? ''] ?? '');
+const shortDate = (value: string) => new Intl.DateTimeFormat('en-PH', { timeZone: 'Asia/Manila', month: 'short', day: 'numeric' }).format(new Date(`${value}T00:00:00+08:00`));
+/** One short line per row; the full text stays in the review popup (and as a hover tooltip). */
+const shortDetails = (item: ApprovalItem) => {
+  if (item.type === 'crew' && item.startDate && item.endDate) {
+    const days = Math.round((Date.parse(`${item.endDate}T00:00:00Z`) - Date.parse(`${item.startDate}T00:00:00Z`)) / 86400000) + 1;
+    return `${item.startDate === item.endDate ? shortDate(item.startDate) : `${shortDate(item.startDate)} – ${shortDate(item.endDate)}`} · ${days === 1 ? '1 day' : `${days} days`}`;
+  }
+  if (item.type === 'refund') return item.summary.replace(/^Refund (requested|approved):\s*/i, '');
+  if (item.type === 'booking' && item.subtype === 'cancel') return item.summary.replace(/^Cancellation (requested|approved):\s*/i, '') || 'Cancellation';
+  return item.summary;
+};
+const typeText = (item: ApprovalItem) => item.type === 'booking' ? `Booking · ${subtypeLabel(item.subtype) || 'Request'}`
+  : item.type === 'collection' ? 'Collection' : item.type === 'refund' ? 'Refund' : 'Crew leave';
 const titleFor = (item?: ApprovalItem) => {
   if (!item) return 'Review approval';
   if (item.type === 'collection') return 'Verify collection';
   if (item.type === 'refund') return 'Review refund request';
+  if (item.type === 'crew') return item.subtype === 'emergency' ? 'Emergency request' : 'Leave request';
   return `Review ${item.subtype === 'cancel' ? 'cancellation' : item.subtype ?? 'booking'} request`;
 };
 
 function SummaryCard({ label, value, tone, icon: Icon, onClick }: { label: string; value: string | number; tone: string; icon: typeof Clock3; onClick: () => void }) {
-  return <button type="button" onClick={onClick} className="flex min-h-[96px] w-full items-center gap-4 rounded-xl border border-slate-200 bg-white p-4 text-left shadow-sm transition duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1a1f6e]/30">
-    <span className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full ${tone}`}><Icon size={24} strokeWidth={2.25} /></span>
+  return <button type="button" onClick={onClick} className="flex min-h-[96px] w-full min-w-0 items-center gap-4 rounded-xl border border-slate-200 bg-white p-4 text-left shadow-sm transition duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1a1f6e]/30 lg:gap-3 lg:p-3 2xl:gap-4 2xl:p-4">
+    <span className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full lg:h-10 lg:w-10 2xl:h-12 2xl:w-12 ${tone}`}><Icon size={22} strokeWidth={2.25} /></span>
     <span className="min-w-0 flex-1">
       <span className="block text-sm font-medium leading-5 text-slate-700">{label}</span>
       <span className="mt-1 block text-[22px] font-bold leading-tight tabular-nums text-[#0b0f4a]">{value}</span>
@@ -62,7 +79,7 @@ function ApprovalStatusBadge({ status }: { status: string }) {
       : ['rejected', 'cancelled', 'withdrawn'].includes(normalized)
         ? 'border-[#ef4444] bg-[#fee2e2] text-[#ef4444]'
         : 'border-[#94a3b8] bg-[#f8fafc] text-[#475569]';
-  return <span className={`inline-flex min-w-24 justify-center rounded-full border px-3 py-1 text-xs font-bold uppercase tracking-wide ${tone}`}>{status}</span>;
+  return <span className={`inline-flex min-w-24 justify-center rounded-full border px-3 py-1 text-xs font-bold uppercase tracking-wide ${tone}`}>{normalized === 'requested' ? 'Pending' : status}</span>;
 }
 
 function ApprovalReview({ item, detail, onClose, onDecide, busy }: { item: ApprovalItem; detail: Record<string, unknown> | null; onClose: () => void; onDecide: (decision: 'approve' | 'reject', reason?: string) => void; busy: boolean }) {
@@ -75,12 +92,19 @@ function ApprovalReview({ item, detail, onClose, onDecide, busy }: { item: Appro
   const collection = (detail?.collection && typeof detail.collection === 'object' ? detail.collection : {}) as Record<string, unknown>;
   const fields = Object.keys(after);
   const cancelReason = String(detail?.reason ?? '');
-  const approveText = item.type === 'collection' ? 'Verify collection' : item.type === 'refund' ? 'Approve refund' : 'Approve request';
+  const emergency = item.type === 'crew' && item.subtype === 'emergency';
+  const approveText = item.type === 'collection' ? 'Verify collection' : item.type === 'refund' ? 'Approve refund'
+    : item.type === 'crew' ? (emergency ? 'Confirm emergency' : 'Approve leave') : 'Approve request';
+  const crewRequest = item.type === 'crew' && detail ? {
+    kind: String(detail.kind ?? ''), status: String(detail.status ?? item.status), crewName: String(detail.crewName ?? ''),
+    crewType: String(detail.crewType ?? ''), crewEmpId: String(detail.crewEmpId ?? item.bookingNo), startDate: String(detail.startDate ?? ''),
+    endDate: String(detail.endDate ?? ''), reason: String(detail.reason ?? ''), decisionReason: detail.decisionReason as string | null | undefined,
+  } : null;
   const canDecide = ['pending', 'requested', 'verifying'].includes(item.status.toLowerCase());
 
   return <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/50 p-4" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
     <section role="dialog" aria-modal="true" aria-labelledby="approval-modal-title" className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl bg-[#f1f4fa] shadow-2xl">
-      <ModalHeader plain titleId="approval-modal-title" icon={ClipboardCheck} title={titleFor(item)} subtitle={item.bookingNo} onClose={onClose} closeLabel="Close review" />
+      <ModalHeader plain titleId="approval-modal-title" icon={ClipboardCheck} title={titleFor(item)} subtitle={item.type === 'crew' ? undefined : item.bookingNo} onClose={onClose} closeLabel="Close review" />
       <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
         {item.type === 'booking' && <>
           <section className="rounded-2xl border border-slate-200/70 bg-white p-4 shadow-sm"><SectionLabel>Booking details</SectionLabel><div className="mt-3 grid gap-3 text-sm sm:grid-cols-2">
@@ -92,7 +116,8 @@ function ApprovalReview({ item, detail, onClose, onDecide, busy }: { item: Appro
         </>}
         {item.type === 'collection' && <section className="rounded-2xl border border-slate-200/70 bg-white p-4 shadow-sm"><SectionLabel>Collection details</SectionLabel><div className="mt-3 grid gap-3 sm:grid-cols-2"><DetailField label="Client" value={String(detail?.clientName ?? item.client)} /><DetailField label="Payment method" value={String(detail?.method ?? 'Not available')} /><DetailField label="Amount" value={peso.format(Number(detail?.amount ?? item.amount ?? 0))} /><DetailField label="Reference" value={String(detail?.reference ?? 'Not available')} /><DetailField label="Recorded by" value={String(detail?.recordedByName ?? item.submittedByName ?? 'Unknown user')} /><DetailField label="Submitted" value={manilaDateTime(String(detail?.submittedAt ?? item.submittedAt))} /></div><p className="mt-3 rounded-xl bg-blue-50 p-3 text-sm text-blue-900">{canDecide ? 'Verify confirms this payment and includes it in Daily Sales.' : 'This payment has been verified and included in Daily Sales.'}</p></section>}
         {item.type === 'refund' && <section className="rounded-2xl border border-slate-200/70 bg-white p-4 shadow-sm"><SectionLabel>Refund details</SectionLabel><div className="mt-3 grid gap-3 sm:grid-cols-2"><DetailField label="Client" value={String(detail?.clientName ?? item.client)} /><DetailField label="Amount" value={peso.format(Number(detail?.amount ?? item.amount ?? 0))} /><DetailField label="Reason" value={String(detail?.reason ?? 'Not available')} /><DetailField label="Requested by" value={String(detail?.submittedByName ?? item.submittedByName ?? 'Unknown user')} /><DetailField label="Original payment" value={`${String(collection.method ?? 'Payment')} - ${String(collection.reference ?? 'Reference unavailable')}`} /></div><p className="mt-3 rounded-xl bg-red-50 p-3 text-sm text-red-800">{canDecide ? 'Approval creates the linked reversal against the original payment.' : 'This refund was approved and the linked reversal was created.'}</p></section>}
-        <section className="rounded-2xl border border-slate-200/70 bg-white p-4 shadow-sm"><SectionLabel>Submission</SectionLabel><p className="mt-2 text-sm text-slate-600">Submitted by <span className="font-medium text-slate-800">{item.submittedByName || 'Unknown user'}</span> on {manilaDateTime(item.submittedAt)}</p></section>
+        {crewRequest && <CrewLeaveDetails viewer="admin" request={crewRequest} audit={Array.isArray(detail?.audit) ? detail.audit as CrewLeaveAudit[] : []} trips={Array.isArray(detail?.affectedTrips) ? detail.affectedTrips as CrewLeaveTrip[] : []} />}
+        {item.type !== 'crew' && <section className="rounded-2xl border border-slate-200/70 bg-white p-4 shadow-sm"><SectionLabel>Submission</SectionLabel><p className="mt-2 text-sm text-slate-600">Submitted by <span className="font-medium text-slate-800">{item.submittedByName || 'Unknown user'}</span> on {manilaDateTime(item.submittedAt)}</p></section>}
         {rejecting && <section className="rounded-2xl border border-red-200 bg-white p-4"><label htmlFor="reject-reason" className="text-sm font-medium text-slate-700">Reason for rejection <span className="text-red-600">*</span></label><textarea id="reject-reason" value={reason} onChange={(event) => { setReason(event.target.value); setError(''); }} maxLength={500} rows={3} className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-[#1a1f6e] focus:ring-2 focus:ring-[#1a1f6e]/20" placeholder="Enter a reason for the submitter" />{error && <p className="mt-1 text-sm text-red-700">{error}</p>}</section>}
       </div>
       <footer className="flex shrink-0 flex-wrap justify-end gap-2 border-t border-slate-200 bg-white px-4 py-3">
@@ -171,6 +196,7 @@ export default function Approvals() {
     { label: 'Reschedules & cancellations', value: counts.booking, tone: 'bg-indigo-50 text-indigo-700', icon: FileCheck2, target: 'booking' as FilterType },
     { label: 'Collections to verify', value: counts.collection, tone: 'bg-blue-50 text-blue-700', icon: CheckCheck, target: 'collection' as FilterType },
     { label: 'Refund requests', value: counts.refund, tone: 'bg-red-50 text-red-700', icon: Coins, target: 'refund' as FilterType },
+    { label: counts.emergency ? `Crew leave (${counts.emergency} emergency)` : 'Crew leave', value: counts.crew, tone: counts.emergency ? 'bg-red-600 text-white' : 'bg-purple-50 text-purple-700', icon: counts.emergency ? Siren : CalendarOff, target: 'crew' as FilterType },
   ], [counts]);
 
   const chooseFilter = (value: FilterType) => {
@@ -180,16 +206,16 @@ export default function Approvals() {
   };
   const totalPages = Math.max(1, Math.ceil(total / limit));
   return <div className="space-y-5">
-    <PageHeader icon={ClipboardCheck} title="APPROVALS" subtitle={<>Review reschedules, cancellations, collection verifications and refund requests <span className="font-medium text-[#b8860b]">that need your action.</span></>} subtitleClassName="mt-1 text-sm text-slate-500" />
-    <div className="grid auto-rows-fr gap-4 sm:grid-cols-2 xl:grid-cols-4">{cards.map((card) => <SummaryCard key={card.label} {...card} onClick={() => chooseFilter(card.target)} />)}</div>
+    <PageHeader icon={ClipboardCheck} title="APPROVALS" subtitle={<>Review reschedules, cancellations, collection verifications, refund requests and crew leave <span className="font-medium text-[#b8860b]">that need your action.</span></>} subtitleClassName="mt-1 text-sm text-slate-500" />
+    <div className="grid auto-rows-fr gap-4 sm:grid-cols-2 lg:grid-cols-5 lg:gap-3 2xl:gap-4">{cards.map((card) => <SummaryCard key={card.label} {...card} onClick={() => chooseFilter(card.target)} />)}</div>
     <div className="flex flex-col gap-4 items-start justify-between lg:flex-row lg:items-center border border-b-0 border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-800">
       <div className="relative w-full lg:max-w-md">
         <Search size={18} aria-hidden="true" className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
         <input
           value={search}
           onChange={event => { setSearch(event.target.value); setPage(1); }}
-          placeholder="Search booking no. or client..."
-          aria-label="Search booking no. or client..."
+          placeholder="Search booking no., client or crew..."
+          aria-label="Search booking no., client or crew..."
           className="w-full rounded-lg border border-slate-200 bg-white py-2.5 pl-10 pr-4 text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#0a0f2e]/20"
         />
       </div>
@@ -207,10 +233,10 @@ export default function Approvals() {
     </div>
     <section className="!mt-0 overflow-visible border border-slate-200 bg-white">
       {error ? <div className="flex min-h-64 flex-col items-center justify-center px-5 text-center"><ShieldAlert className="mb-2 h-8 w-8 text-amber-600" /><p className="text-sm font-medium text-slate-800">Approvals could not be loaded.</p><button onClick={() => void load()} className="mt-3 rounded-lg bg-[#030848] px-4 py-2 text-sm font-medium text-white">Retry</button></div> : <div className="overflow-x-auto"><table className="approval-data-table min-w-[1020px] w-full table-auto text-sm">
-        <thead><tr className="bg-[#1a1f6e]">{['Type', 'Booking / Client', 'Details', 'Amount', 'Status', filter === 'approved' ? 'Submitted' : 'Waiting', 'Action'].map((heading) => <th key={heading} className="whitespace-nowrap px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-white">{heading}</th>)}</tr></thead>
+        <thead><tr className="bg-[#1a1f6e]">{['Booking / Client', 'Type', 'Details', 'Amount', 'Status', filter === 'approved' ? 'Submitted' : 'Waiting', 'Action'].map((heading) => <th key={heading} className="whitespace-nowrap px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-white">{heading}</th>)}</tr></thead>
         <tbody className="divide-y divide-slate-100">{loading ? <tr><td colSpan={7} className="px-4 py-14 text-center text-sm text-slate-500">Loading approvals...</td></tr> : items.length === 0 ? <tr><td colSpan={7} className="px-4 py-16 text-center"><CheckCheck className="mx-auto mb-2 h-8 w-8 text-emerald-600" /><p className="text-sm font-semibold text-slate-800">{filter === 'approved' ? 'No approved items found' : "You're all caught up"}</p><p className="mt-1 text-sm text-slate-500">{filter === 'approved' ? 'Approved requests will appear here.' : 'No approvals are waiting.'}</p></td></tr> : items.map((item) => {
           const overdue = filter !== 'approved' && Date.now() - new Date(item.submittedAt).getTime() > 86400000;
-          return <tr key={`${item.type}-${item.id}`}><td className="px-4 py-3 align-middle text-sm text-slate-700">{item.type === 'booking' ? `Booking - ${subtypeLabel(item.subtype) || 'request'}` : item.type}</td><td className="px-4 py-3 align-middle"><p className="font-medium text-slate-900">{item.bookingNo}</p><p className="text-sm text-slate-600">{item.client}</p></td><td className="break-words px-4 py-3 align-middle text-sm text-slate-700">{item.summary}</td><td className="whitespace-nowrap px-4 py-3 align-middle font-medium tabular-nums text-slate-900">{item.amount === null ? '-' : peso.format(item.amount)}</td><td className="px-4 py-3 align-middle"><ApprovalStatusBadge status={item.status} /></td><td className={`whitespace-nowrap px-4 py-3 align-middle tabular-nums ${overdue ? 'font-medium text-red-700' : 'text-slate-600'}`}>{filter === 'approved' ? manilaDateTime(item.submittedAt) : <>{ageLabel(item.submittedAt)}{overdue && <span className="ml-1">Overdue</span>}</>}</td><td className="px-4 py-3 align-middle"><button type="button" onClick={() => void openReview(item)} aria-label={`${['pending', 'requested', 'verifying'].includes(item.status.toLowerCase()) ? 'Review' : 'View'} ${item.bookingNo}`} title={['pending', 'requested', 'verifying'].includes(item.status.toLowerCase()) ? 'Review' : 'View'} className="inline-flex h-[34px] w-[34px] items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100 hover:text-[#1a1f6e] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1a1f6e]/20"><Eye className="h-4 w-4" aria-hidden="true" /></button></td></tr>;
+          return <tr key={`${item.type}-${item.id}`}><td className="px-4 py-3 align-middle"><p className="font-medium text-slate-900">{item.bookingNo}</p><p className="text-sm text-slate-600">{item.client}</p></td><td className="whitespace-nowrap px-4 py-3 align-middle text-sm text-slate-700">{item.type === 'crew' && item.subtype === 'emergency' ? <span className="inline-flex items-center gap-1 rounded-full bg-red-600 px-2 py-0.5 text-xs font-bold uppercase tracking-wide text-white"><Siren size={12} aria-hidden="true" />Emergency</span> : typeText(item)}</td><td className="max-w-[260px] px-4 py-3 align-middle text-sm text-slate-700"><span className="block truncate" title={item.summary}>{shortDetails(item)}</span></td><td className="whitespace-nowrap px-4 py-3 align-middle font-medium tabular-nums text-slate-900">{item.amount === null ? '-' : peso.format(item.amount)}</td><td className="px-4 py-3 align-middle"><ApprovalStatusBadge status={item.status} /></td><td className={`whitespace-nowrap px-4 py-3 align-middle tabular-nums ${overdue ? 'font-medium text-red-700' : 'text-slate-600'}`}>{filter === 'approved' ? manilaDateTime(item.submittedAt) : <>{ageLabel(item.submittedAt)}{overdue && <span className="ml-1">Overdue</span>}</>}</td><td className="px-4 py-3 align-middle"><button type="button" onClick={() => void openReview(item)} aria-label={`${['pending', 'requested', 'verifying'].includes(item.status.toLowerCase()) ? 'Review' : 'View'} ${item.bookingNo}`} title={['pending', 'requested', 'verifying'].includes(item.status.toLowerCase()) ? 'Review' : 'View'} className="inline-flex h-[34px] w-[34px] items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100 hover:text-[#1a1f6e] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1a1f6e]/20"><Eye className="h-4 w-4" aria-hidden="true" /></button></td></tr>;
         })}</tbody>
       </table></div>}
       {!error && <TablePagination page={page} totalPages={totalPages} totalItems={total} pageSize={limit} onPageChange={setPage} onPageSizeChange={(size) => { setLimit(size); setPage(1); }} />}

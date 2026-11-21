@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import KPICard from '../../components/shared/KpiCard';
 import { ArrowRight, BellRing, Check, CheckCheck, CheckCircle2, ClipboardCheck, Clock3, Eye, RotateCcw, Search, Send, X, XCircle } from 'lucide-react';
 
-type Submission = { id: string; type: 'booking' | 'collection' | 'refund'; subtype: string | null; bookingId?: string; bookingNo: string; client: string; summary: string; amount: number | null; submittedAt: string; submittedBy: string; submittedByName?: string; submittedByRole?: string; status: string; decisionReason?: string | null };
+type Submission = { id: string; type: 'booking' | 'collection' | 'refund'; subtype: string | null; bookingId?: string; bookingNo: string; client: string; summary: string; amount: number | null; submittedAt: string; submittedBy: string; submittedByName?: string; submittedByRole?: string; status: string; decisionReason?: string | null; requestedDate?: string | null; method?: string };
 type ApprovalAudit = { actorName?: string; actorRole?: string; action: string; reason?: string | null; createdAt: string };
 type Filter = 'All' | 'Pending' | 'Approved' | 'Rejected';
 const currency = new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' });
@@ -40,7 +40,31 @@ const displayAddress = (value: unknown) => {
 const approvedStatuses = ['Approved', 'Verified', 'Refunded'];
 const pendingStatuses = ['Pending', 'Requested'];
 const typeLabel = (item: Submission) => item.type === 'booking' ? `Booking - ${item.subtype ?? 'request'}` : item.type === 'collection' ? 'Collection' : 'Refund';
-const statusLabel = (status: string) => status === 'Requested' ? 'Pending' : status;
+const typeText = (item: Submission) => item.type === 'booking' ? `Booking · ${({ reschedule: 'Reschedule', cancel: 'Cancellation' } as Record<string, string>)[item.subtype ?? ''] ?? 'Request'}` : item.type === 'collection' ? 'Collection' : 'Refund';
+/**
+ * A plain phrase saying what was asked, readable at a glance. Reasons and references stay in the
+ * detail popup (and show on hover).
+ */
+const shortDetails = (item: Submission) => {
+  if (item.type === 'booking' && item.subtype === 'reschedule') return item.requestedDate ? `Move to ${dateOnly(item.requestedDate)}` : 'Move to a new date';
+  if (item.type === 'booking' && item.subtype === 'cancel') return 'Cancel the booking';
+  if (item.type === 'collection') return item.method ? `Paid via ${item.method}` : 'Payment received';
+  if (item.type === 'refund') return 'Return money to client';
+  return item.summary;
+};
+/** CS sees four statuses only: Pending, Approved, Rejected, Withdrawn. Verified and Refunded are approvals too. */
+const statusLabel = (status: string) => status === 'Requested' ? 'Pending' : approvedStatuses.includes(status) ? 'Approved' : status;
+/** What actually happened, in plain words, beside the status. */
+const decisionText = (item: Submission) => {
+  if (pendingStatuses.includes(item.status)) return 'Waiting for Admin';
+  if (item.status === 'Rejected') return item.decisionReason || 'Changes requested';
+  if (item.status === 'Withdrawn') return 'Withdrawn by you';
+  if (!approvedStatuses.includes(item.status)) return item.decisionReason || '—';
+  if (item.type === 'collection') return 'Payment verified';
+  if (item.type === 'refund') return item.status === 'Refunded' ? 'Money returned to client' : 'Approved – finishing up';
+  if (item.subtype === 'cancel') return 'Booking cancelled';
+  return item.requestedDate ? `Booking moved to ${dateOnly(item.requestedDate)}` : 'Booking moved';
+};
 
 function StatusPill({ status }: { status: string }) {
   const normalized = statusLabel(status);
@@ -189,7 +213,7 @@ export default function MySubmissions() {
     } finally { setBusy(false); }
   };
 
-  const shown = items.filter(item => {
+  const shown = [...items].sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime()).filter(item => {
     const matchStatus = filter === 'All' || (filter === 'Pending' ? pendingStatuses.includes(item.status) : filter === 'Approved' ? approvedStatuses.includes(item.status) : item.status === filter);
     const matchSearch = !search || `${item.bookingNo} ${item.client} ${item.summary}`.toLowerCase().includes(search.toLowerCase());
     return matchStatus && matchSearch;
@@ -208,8 +232,8 @@ export default function MySubmissions() {
       <KPICard label={`${status} submissions`} value={value} icon={icon} iconColor={color} variant="dashboard-compact" />
     </button>)}</div>
     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border border-b-0 border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-800"><label className="relative block w-full sm:w-[536px] sm:shrink-0"><Search size={20} aria-hidden="true" className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" /><input value={search} onChange={event => { setSearch(event.target.value); setPage(1); }} placeholder="Search booking no. or client..." className="h-12 w-full rounded-lg border border-slate-200 bg-white pl-12 pr-4 text-sm text-slate-700 outline-none placeholder:text-slate-400 focus:border-[#1a1f6e] focus:ring-2 focus:ring-[#1a1f6e]/20" /></label><StatusFilter options={['All', 'Pending', 'Approved', 'Rejected'] as Filter[]} value={filter} onChange={value => { setFilter(value); setPage(1); }} /></div>
-    <section className="!mt-0 overflow-visible border border-slate-200 bg-white">{error ? <div className="flex min-h-56 flex-col items-center justify-center text-center"><BellRing className="mb-2 h-7 w-7 text-amber-600" /><p className="text-sm text-slate-700">Unable to load submissions.</p><button onClick={() => void load()} className="mt-3 rounded-lg bg-[#030848] px-4 py-2 text-sm text-white">Retry</button></div> : <div className="overflow-x-auto"><table className="approval-data-table min-w-[1020px] w-full table-auto text-sm"><thead><tr className="bg-[#1a1f6e]">{['Type', 'Booking / Client', 'Details', 'Amount', 'Status', 'Updated', 'Decision', 'Action'].map((label) => <th key={label} className="whitespace-nowrap px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-white">{label}</th>)}</tr></thead><tbody className="divide-y divide-slate-100">{loading ? <tr><td colSpan={8} className="px-4 py-14 text-center text-sm text-slate-500">Loading submissions...</td></tr> : visible.length === 0 ? <tr><td colSpan={8} className="px-4 py-14 text-center"><CheckCheck className="mx-auto mb-2 h-7 w-7 text-emerald-600" /><p className="text-sm font-medium text-slate-800">No submissions in this view.</p></td></tr> : visible.map(item => {
-      return <tr key={`${item.type}-${item.id}`}><td className="px-4 py-3 align-middle text-sm text-slate-700">{typeLabel(item)}</td><td className="px-4 py-3 align-middle"><p className="font-medium text-slate-900">{item.bookingNo}</p><p className="text-sm text-slate-600">{item.client}</p></td><td className="break-words px-4 py-3 align-middle text-sm text-slate-700">{item.type === 'refund' ? item.summary.split(':')[0] : item.summary}{item.status === 'Rejected' && item.decisionReason && <p className="mt-1 line-clamp-1 text-sm text-red-700">Reason: {item.decisionReason}</p>}</td><td className="whitespace-nowrap px-4 py-3 align-middle font-medium tabular-nums text-slate-900">{item.amount === null ? '-' : currency.format(item.amount)}</td><td className="px-4 py-3 align-middle"><StatusPill status={item.status} /></td><td className="whitespace-nowrap px-4 py-3 align-middle text-slate-600">{tableDateTime(item.submittedAt)}</td><td className="max-w-48 px-4 py-3 align-middle text-slate-600">{item.decisionReason || (pendingStatuses.includes(item.status) ? 'Waiting for Admin' : approvedStatuses.includes(item.status) ? 'Submission approved' : item.status === 'Rejected' ? 'Changes requested' : '—')}</td><td className="px-4 py-3 align-middle"><button type="button" onClick={() => setSelected(item)} aria-label={`View ${item.bookingNo}`} title="View" className="inline-flex h-[34px] w-[34px] items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100 hover:text-[#1a1f6e] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1a1f6e]/20"><Eye className="h-4 w-4" aria-hidden="true" /></button></td></tr>;
+    <section className="!mt-0 overflow-visible border border-slate-200 bg-white">{error ? <div className="flex min-h-56 flex-col items-center justify-center text-center"><BellRing className="mb-2 h-7 w-7 text-amber-600" /><p className="text-sm text-slate-700">Unable to load submissions.</p><button onClick={() => void load()} className="mt-3 rounded-lg bg-[#030848] px-4 py-2 text-sm text-white">Retry</button></div> : <div className="overflow-x-auto"><table className="approval-data-table min-w-[1020px] w-full table-auto text-sm"><thead><tr className="bg-[#1a1f6e]">{['Booking / Client', 'Type', 'Details', 'Amount', 'Status', 'Submitted', 'Decision', 'Action'].map((label) => <th key={label} className="whitespace-nowrap px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-white">{label}</th>)}</tr></thead><tbody className="divide-y divide-slate-100">{loading ? <tr><td colSpan={8} className="px-4 py-14 text-center text-sm text-slate-500">Loading submissions...</td></tr> : visible.length === 0 ? <tr><td colSpan={8} className="px-4 py-14 text-center"><CheckCheck className="mx-auto mb-2 h-7 w-7 text-emerald-600" /><p className="text-sm font-medium text-slate-800">No submissions in this view.</p></td></tr> : visible.map(item => {
+      return <tr key={`${item.type}-${item.id}`}><td className="px-4 py-3 align-middle"><p className="font-medium text-slate-900">{item.bookingNo}</p><p className="text-sm text-slate-600">{item.client}</p></td><td className="whitespace-nowrap px-4 py-3 align-middle text-sm text-slate-700">{typeText(item)}</td><td className="max-w-[260px] px-4 py-3 align-middle text-sm text-slate-700"><span className="block truncate" title={item.summary}>{shortDetails(item)}</span></td><td className="whitespace-nowrap px-4 py-3 align-middle font-medium tabular-nums text-slate-900">{item.amount === null ? '-' : currency.format(item.amount)}</td><td className="px-4 py-3 align-middle"><StatusPill status={item.status} /></td><td className="whitespace-nowrap px-4 py-3 align-middle text-slate-600">{tableDateTime(item.submittedAt)}</td><td className="max-w-48 px-4 py-3 align-middle text-slate-600">{decisionText(item)}</td><td className="px-4 py-3 align-middle"><button type="button" onClick={() => setSelected(item)} aria-label={`View ${item.bookingNo}`} title="View" className="inline-flex h-[34px] w-[34px] items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100 hover:text-[#1a1f6e] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1a1f6e]/20"><Eye className="h-4 w-4" aria-hidden="true" /></button></td></tr>;
     })}</tbody></table></div>}{!error && <TablePagination page={page} totalPages={totalPages} totalItems={shown.length} pageSize={pageSize} onPageChange={setPage} onPageSizeChange={value => { setPageSize(value); setPage(1); }} />}</section>
     {selected && <SubmissionDialog item={selected} busy={busy} onClose={() => { if (!busy) setSelected(null); }} onAction={(kind, fields) => void action(kind, fields)} />}
   </div>;

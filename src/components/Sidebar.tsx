@@ -1,12 +1,11 @@
 import { useAuthStore } from '../store/authStore';
 import { canSwitchSystem,switchSystemUrl } from '../lib/session/switchSystem';
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useApp } from '../contexts/AppContext';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { ChevronDown, LayoutGrid, LogOut } from 'lucide-react';
 import { getNavItems, getRoleProfile } from '../lib/auth';
 import type { NavItem, NavSection } from '../lib/auth';
-import { api } from '../lib/api';
 import NotificationBell from './shared/NotificationBell';
 
 function isSection(entry: NavItem | NavSection): entry is NavSection {
@@ -31,8 +30,6 @@ interface SidebarGroupProps {
   items: NavSection['items'];
   expanded: boolean;
   pathname: string;
-  approvalCount: number;
-  submissionCount: number;
   isAdmin: boolean;
   onToggle: () => void;
   onItemClick: (path: string, parentSection: string) => void;
@@ -44,8 +41,6 @@ function SidebarGroup({
   items,
   expanded,
   pathname,
-  approvalCount,
-  submissionCount,
   isAdmin,
   onToggle,
   onItemClick,
@@ -77,9 +72,6 @@ function SidebarGroup({
             const isActive = item.path !== '#' && (
               pathname === item.path || pathname.startsWith(item.path + '/')
             );
-            const badgeCount = item.label === 'Approvals'
-              ? approvalCount
-              : item.label === 'For Approvals' ? submissionCount : 0;
             const ItemIcon = item.icon;
 
             return (
@@ -93,11 +85,6 @@ function SidebarGroup({
               >
                 <ItemIcon aria-hidden="true" className="h-4 w-4 shrink-0" />
                 <span className="hidden whitespace-nowrap text-sm group-hover:block">{item.label}</span>
-                {badgeCount > 0 && (
-                  <span className="absolute right-2 top-1/2 flex min-w-5 -translate-y-1/2 items-center justify-center rounded-full bg-[#e8b800] px-1.5 py-0.5 text-[11px] font-bold leading-none text-[#0b0f4a]">
-                    {badgeCount > 99 ? '99+' : badgeCount}
-                  </span>
-                )}
               </button>
             );
           })}
@@ -115,8 +102,6 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const isOperationsNav = user?.role === 'Operations';
   const navigate = useNavigate();
   const location = useLocation();
-  const [approvalCount, setApprovalCount] = useState(0);
-  const [submissionCount, setSubmissionCount] = useState(0);
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
     Dashboard: false,
     Administration: false,
@@ -124,28 +109,6 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     'Booking Management': false,
     'Reports & Analytics': false,
   });
-
-  useEffect(() => {
-    if (user?.role !== 'Administrator' && user?.role !== 'Customer Service') return;
-    let active = true;
-    const refresh = () => {
-      if (document.visibilityState !== 'visible') return;
-      if (user?.role === 'Administrator') {
-        api.get<{ total?: number }>('/approvals/counts').then(({ data }) => {
-          if (active) setApprovalCount(Math.max(0, Number(data.total) || 0));
-        }).catch(() => undefined);
-      } else {
-        api.get<Array<{ status: string }>>('/approvals/mine').then(({ data }) => {
-          if (active) setSubmissionCount(data.filter(item => ['Pending', 'Rejected'].includes(item.status)).length);
-        }).catch(() => undefined);
-      }
-    };
-    refresh();
-    const timer = window.setInterval(refresh, 60000);
-    window.addEventListener('focus', refresh);
-    document.addEventListener('visibilitychange', refresh);
-    return () => { active = false; window.clearInterval(timer); window.removeEventListener('focus', refresh); document.removeEventListener('visibilitychange', refresh); };
-  }, [user?.role]);
 
   const initials = user?.fullName
     ? user.fullName.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()
@@ -196,8 +159,6 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                   items={entry.items}
                   expanded={expanded}
                   pathname={location.pathname}
-                  approvalCount={approvalCount}
-                  submissionCount={submissionCount}
                   isAdmin={isAdminNav}
                   onToggle={() => setExpandedSections((current) => ({ ...current, [entry.label]: !expanded }))}
                   onItemClick={handleNavClick}
@@ -230,7 +191,6 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                   <item.icon aria-hidden="true" className="w-5 h-5 flex-shrink-0" />
                 )}
                 <span className="hidden whitespace-nowrap text-sm group-hover:block">{item.label}</span>
-                {(item.label === 'Approvals' && approvalCount > 0 || item.label === 'For Approvals' && submissionCount > 0) && <span className="absolute right-2 top-1/2 flex min-w-5 -translate-y-1/2 items-center justify-center rounded-full bg-[#e8b800] px-1.5 py-0.5 text-[11px] font-bold leading-none text-[#0b0f4a]">{(item.label === 'Approvals' ? approvalCount : submissionCount) > 99 ? '99+' : item.label === 'Approvals' ? approvalCount : submissionCount}</span>}
               </button>
             );
           })}
