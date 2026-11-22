@@ -26,8 +26,9 @@ type Props = {
   showMap?: boolean;
 };
 
-const CARTO_VOYAGER = 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
-const CARTO_ATTR = '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/">CARTO</a>';
+// OpenStreetMap's own tiles: free with no key (CARTO's basemaps now return an "API key required" image)
+const OSM_TILES = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
+const OSM_ATTR = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
 const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string | undefined;
 
 async function loadLeafletLibrary() { return Leaflet; }
@@ -228,8 +229,8 @@ export default function BookingMap({ pickupAddress, deliveryAddress, pickupLandm
             zoomControl: true,
           });
 
-          L.tileLayer(CARTO_VOYAGER, {
-            attribution: CARTO_ATTR,
+          L.tileLayer(OSM_TILES, {
+            attribution: OSM_ATTR,
             maxZoom: 19,
           }).addTo(map);
 
