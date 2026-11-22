@@ -217,7 +217,7 @@ export default function VehicleAvailability() {
     };
   }, [vehicleRetry]);
 
-  // Statuses change when Operations files leave or an emergency (spec bms/0003), so refresh quietly.
+  // Statuses change when a driver or helper files leave or an emergency (specs bms/0003, 0005), so refresh quietly.
   useEffect(() => {
     const refresh = () => {
       if (document.visibilityState !== 'visible') return;
