@@ -5,7 +5,7 @@ import { toast } from 'sonner';
 import { api } from '../../lib/api';
 import PageHeader from '../../components/pageheader/Pageheader';
 import TablePagination from '../../components/ui/TablePagination';
-import { AlarmClock, CalendarOff, Check, CheckCheck, ClipboardCheck, Clock3, Coins, Eye, FileCheck2, History, Search, ShieldAlert, Siren, X } from 'lucide-react';
+import { AlarmClock, Check, CheckCheck, ClipboardCheck, Clock3, Coins, Eye, FileCheck2, History, Search, ShieldAlert, UserRoundMinus, X } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import DateRangeFilter from '../../components/ui/DateRangeFilter';
 import CrewLeaveDetails, { type CrewLeaveAudit, type CrewLeaveTrip } from '../../components/crewleave/CrewLeaveDetails';
@@ -213,12 +213,12 @@ export default function Approvals() {
     { key: 'booking', label: 'Reschedules & cancellations', value: counts.booking, tone: 'bg-indigo-50 text-indigo-700', icon: FileCheck2 },
     { key: 'collection', label: 'Collections to verify', value: counts.collection, tone: 'bg-blue-50 text-blue-700', icon: CheckCheck },
     { key: 'refund', label: 'Refund requests', value: counts.refund, tone: 'bg-red-50 text-red-700', icon: Coins },
-    { key: 'crew', label: counts.emergency ? `Crew leave (${counts.emergency} emergency)` : 'Crew leave', value: counts.crew, tone: counts.emergency ? 'bg-red-600 text-white' : 'bg-purple-50 text-purple-700', icon: counts.emergency ? Siren : CalendarOff },
+    { key: 'crew', label: 'Leave Request', value: counts.crew, tone: 'bg-purple-50 text-purple-700', icon: UserRoundMinus },
   ], [counts]);
 
   // The date range sits in the header, so it stays put when switching tabs or cards.
   const resetFilters = () => { setSubtype(''); setDecision(''); setPage(1); };
-  /** Cards always open the Waiting tab, filtered to what they count. */
+  /** Cards always open the Needs action tab, filtered to what they count. */
   const showWaiting = (key: string) => {
     setSearchParams(key === 'overdue' ? { overdue: 'true' } : key === 'all' ? {} : { type: key });
     resetFilters();
@@ -245,20 +245,21 @@ export default function Approvals() {
     ? ['Booking / Client', 'Type', 'Details', 'Decision', 'Decided by', 'Decided on', 'Action']
     : ['Booking / Client', 'Type', 'Details', 'Amount', 'Status', 'Waiting', 'Action'];
   const clientCell = (item: ApprovalItem) => <td className="px-4 py-3 align-middle"><p className="font-medium text-slate-900">{item.bookingNo}</p><p className="text-sm text-slate-600">{item.client}</p></td>;
-  const typeCell = (item: ApprovalItem) => <td className="whitespace-nowrap px-4 py-3 align-middle text-sm text-slate-700">{item.type === 'crew' && item.subtype === 'emergency' ? <span className="inline-flex items-center gap-1 rounded-full bg-red-600 px-2 py-0.5 text-xs font-bold uppercase tracking-wide text-white"><Siren size={12} aria-hidden="true" />Emergency</span> : typeText(item)}</td>;
+  const typeCell = (item: ApprovalItem) => <td className="whitespace-nowrap px-4 py-3 align-middle text-sm text-slate-700">{typeText(item)}</td>;
   const detailsCell = (item: ApprovalItem) => <td className="max-w-[260px] px-4 py-3 align-middle text-sm text-slate-700"><span className="block truncate" title={item.summary}>{shortDetails(item)}</span></td>;
   const viewCell = (item: ApprovalItem) => {
     const label = view === 'waiting' ? 'Review' : 'View';
     return <td className="px-4 py-3 align-middle"><button type="button" onClick={() => void openReview(item)} aria-label={`${label} ${item.bookingNo}`} title={label} className="inline-flex h-[34px] w-[34px] items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100 hover:text-[#1a1f6e] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1a1f6e]/20"><Eye className="h-4 w-4" aria-hidden="true" /></button></td>;
   };
   const emptyTitle = view === 'history' ? 'No decided requests found' : overdueOnly ? 'Nothing is overdue' : "You're all caught up";
-  const emptyText = view === 'history' ? 'Approved, rejected and withdrawn requests appear here.' : 'No approvals are waiting.';
+  const emptyText = view === 'history' ? 'Approved, rejected and withdrawn requests appear here.' : 'Nothing needs your action right now.';
 
   return <div className="space-y-5">
-    <PageHeader icon={ClipboardCheck} title="APPROVALS" subtitle={<>Review reschedules, cancellations, collection verifications, refund requests and crew leave <span className="font-medium text-[#b8860b]">that need your action.</span></>} subtitleClassName="mt-1 text-sm text-slate-500"
+    <PageHeader icon={ClipboardCheck} title="APPROVALS" subtitle="Review and take action on pending requests" subtitleClassName="mt-1 text-sm text-slate-500"
       action={<DateRangeFilter from={dateFrom} to={dateTo} onFromChange={value => { setDateFrom(value); setPage(1); }} onToChange={value => { setDateTo(value); setPage(1); }} onClear={() => { setDateFrom(''); setDateTo(''); setPage(1); }} />} />
-    <div role="tablist" aria-label="Approvals" className="inline-flex rounded-2xl border border-slate-200 bg-slate-100 p-1.5">
-      {tab('waiting', 'Waiting', Clock3)}
+    {/* PageHeader leaves 32px under its line; pull the tabs up so every gap on the page is 20px. */}
+    <div role="tablist" aria-label="Approvals" className="!-mt-3 inline-flex rounded-2xl border border-slate-200 bg-slate-100 p-1.5">
+      {tab('waiting', 'Needs action', Clock3)}
       {tab('history', 'History', History)}
     </div>
     <div className="grid auto-rows-fr gap-4 sm:grid-cols-2 lg:grid-cols-5 lg:gap-3 2xl:gap-4">{cards.map(({ key, ...card }) => <SummaryCard key={key} {...card} onClick={() => showWaiting(key)} />)}</div>
@@ -274,7 +275,7 @@ export default function Approvals() {
         />
       </div>
       <div className="flex flex-wrap items-center gap-2">
-        {overdueOnly && <button type="button" onClick={() => showWaiting('all')} aria-label="Show all waiting requests" className="inline-flex h-10 items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3 text-sm font-medium text-red-700"><AlarmClock size={15} aria-hidden="true" />Overdue only<X size={14} aria-hidden="true" /></button>}
+        {overdueOnly && <button type="button" onClick={() => showWaiting('all')} aria-label="Show all requests that need action" className="inline-flex h-10 items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3 text-sm font-medium text-red-700"><AlarmClock size={15} aria-hidden="true" />Overdue only<X size={14} aria-hidden="true" /></button>}
         {view === 'history' && <StatusFilter options={DECISION_OPTIONS} value={decision} onChange={value => { setDecision(value); setPage(1); }} allValue="" allLabel="All Decisions" ariaLabel="Filter by decision" />}
         <StatusFilter options={APPROVAL_FILTER_OPTIONS} value={filter} onChange={chooseFilter} allValue="all" allLabel="All Requests" ariaLabel="Filter approvals" />
         {filter === 'booking' && <StatusFilter
