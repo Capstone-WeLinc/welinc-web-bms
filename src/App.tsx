@@ -19,7 +19,6 @@ import AdminJobOrder from './pages/admin/JobOrder';
 import OperationsDashboard from './pages/operations/OperationsDashboard';
 import OperationsProfile from './pages/operations/OperationsProfile';
 import OperationsJobOrder from './pages/operations/OperationsJobOrder';
-import OperationsForApprovals from './pages/operations/OperationsForApprovals';
 import VehicleAvailability from './pages/admin/VehicleAvailability';
 import Reports from './pages/admin/Reports';
 import AdminSalesReport from './pages/admin/AdminSalesReport';
@@ -261,18 +260,6 @@ function App() {
           }
         />
 
-        <Route
-          path="/operations/for-approvals"
-          element={
-            <ProtectedRoute allowedRoles={['Operations']}>
-              <Layout>
-                <OperationsForApprovals />
-              </Layout>
-            </ProtectedRoute>
-          }
-        />
-        {/* Earlier name of the same page; keeps old notification links working. */}
-        <Route path="/operations/crew-leave" element={<Navigate to="/operations/for-approvals" replace />} />
 
         <Route
           path="/operations/profile"

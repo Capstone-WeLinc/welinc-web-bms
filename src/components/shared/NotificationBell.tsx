@@ -164,10 +164,9 @@ async function loadCandidates(role: Role): Promise<{ candidates: Candidate[]; ac
     };
   }
 
-  const [schedules, jobOrders, crewLeave, crewConflicts, deletedBookings] = await Promise.all([
+  const [schedules, jobOrders, crewConflicts, deletedBookings] = await Promise.all([
     getFeed<Array<Record<string, unknown>>>('schedules', '/scheduling'),
     getFeed<Array<Record<string, unknown>>>('job-orders', '/job-order'),
-    getFeed<Array<Record<string, unknown>>>('crew-leave', '/crew-leave/mine'),
     getFeed<Array<Record<string, unknown>>>('crew-conflicts', '/crew-leave/conflicts'),
     deletions,
   ]);
@@ -200,24 +199,7 @@ async function loadCandidates(role: Role): Promise<{ candidates: Candidate[]; ac
       });
     }
   }
-  // Crew leave (spec bms/0003): Admin's decision on a request this user filed.
-  if (crewLeave.ok) {
-    for (const item of crewLeave.data ?? []) {
-      const status = String(item.status ?? 'Requested');
-      const kind = item.kind === 'EMERGENCY' ? 'emergency' : 'leave';
-      const verb = status === 'Approved' ? (kind === 'emergency' ? 'confirmed' : 'approved') : status === 'Rejected' ? 'rejected' : null;
-      candidates.push({
-        source: crewLeave.source,
-        key: `crew-leave:${String(item.id)}`,
-        state: `${status}|${String(item.decisionReason ?? '')}`,
-        title: verb ? `Crew ${kind} for ${String(item.crewName ?? 'crew')} ${verb}` : `Crew ${kind} for ${String(item.crewName ?? 'crew')} filed`,
-        // A decision arrives as a change to a known item, so the message itself says what Admin decided.
-        message: `${kind === 'emergency' ? 'Emergency' : 'Leave'} for ${String(item.crewName ?? 'crew')} ${verb ?? (status === 'Withdrawn' ? 'withdrawn' : 'waiting for Admin')} · ${String(item.startDate ?? '')}${item.endDate && item.endDate !== item.startDate ? ` to ${String(item.endDate)}` : ''}${item.decisionReason ? ` — ${String(item.decisionReason)}` : ''}`,
-        href: '/operations/for-approvals',
-        actionable: status === 'Rejected',
-      });
-    }
-  }
+  // Crew file and track their own leave (spec bms/0005); Operations only needs to reassign affected trips.
   if (crewConflicts.ok) {
     for (const item of crewConflicts.data ?? []) {
       candidates.push({
@@ -233,7 +215,7 @@ async function loadCandidates(role: Role): Promise<{ candidates: Candidate[]; ac
   }
   return {
     candidates,
-    activeSources: [schedules, jobOrders, crewLeave, crewConflicts, deletedBookings].filter((feed) => feed.ok).map((feed) => feed.source),
+    activeSources: [schedules, jobOrders, crewConflicts, deletedBookings].filter((feed) => feed.ok).map((feed) => feed.source),
     deletedBookingNos: deletedBookings.ok ? deletedBookings.data?.bookingNos ?? [] : [],
   };
 }

@@ -107,8 +107,6 @@ export function getNavItems(role: UserRole): NavEntry[] {
     case 'Operations':
       return [
         { label: 'Dashboard', path: '/operations/dashboard', icon: LayoutDashboard, subtitle: 'Overview' },
-        // By priority: crew leave/emergencies first (someone may already be unavailable), then the dispatch flow.
-        { label: 'For Approvals', path: '/operations/for-approvals', icon: ClipboardCheck, subtitle: 'Leave & emergencies' },
         { label: 'Scheduling', path: '/operations/scheduling', icon: CalendarCheck, subtitle: 'Assign trucks & teams' },
         { label: 'Job Order', path: '/operations/job-order', icon: ClipboardList, subtitle: 'Generate & distribute' },
         { label: 'Vehicle & Team Availability', path: '/operations/vehicle-availability', icon: UserCheck, subtitle: 'View availability' },
