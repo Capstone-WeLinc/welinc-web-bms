@@ -44,8 +44,9 @@ test('account deletion sends its one-use reauthentication token and purpose',asy
     if(path==='/auth/profile/verify-password'){verification=body;return {json:{reauthToken:'single-use-test',expiresAt:'2050-01-01T00:00:00Z'}};}
     if(path==='/auth/profile/deletion-request'&&body?.reauthToken){deletion=body;return {status:201,json:{status:'PENDING'}};}
   });
-  await page.goto('/admin/profile',{waitUntil:'domcontentloaded'});await page.getByRole('button',{name:'Request Account Deletion',exact:true}).click();
-  await page.getByPlaceholder('Enter your password to confirm').fill('test-only-password');await page.getByRole('button',{name:'Yes',exact:true}).click();
+  // Same flow as the VMMS profile: the current-password field confirms the deletion request.
+  await page.goto('/admin/profile',{waitUntil:'domcontentloaded'});await page.getByLabel('Current password',{exact:true}).fill('test-only-password');
+  await page.getByRole('button',{name:'Request account deletion',exact:true}).click();
   await expect.poll(()=>deletion?.reauthToken).toBe('single-use-test');expect(verification.purpose).toBe('ACCOUNT_DELETION');
 });
 test('a refused callback returns to the portal once instead of looping',async({page})=>{
