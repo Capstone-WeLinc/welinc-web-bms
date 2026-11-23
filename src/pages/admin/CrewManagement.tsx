@@ -209,7 +209,7 @@ export default function CrewManagement() {
         }
       />
 
-      <div role="tablist" aria-label="Team member type" className="inline-flex rounded-2xl border border-slate-200 bg-slate-100 p-1.5">
+      <div role="tablist" aria-label="Team member type" className="!mt-0 inline-flex rounded-2xl border border-slate-200 bg-slate-100 p-1.5">
         <TabButton active={kind === 'drivers'} icon={<Contact size={17} aria-hidden="true" />} label="Drivers" onClick={() => chooseKind('drivers')} />
         <TabButton active={kind === 'helpers'} icon={<Users size={17} aria-hidden="true" />} label="Helpers" onClick={() => chooseKind('helpers')} />
       </div>

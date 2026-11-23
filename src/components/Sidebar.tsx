@@ -1,12 +1,13 @@
 import { useAuthStore } from '../store/authStore';
 import { canSwitchSystem, switchSystemUrl } from '../lib/session/switchSystem';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useApp } from '../contexts/AppContext';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { ChevronDown, LayoutGrid, LogOut } from 'lucide-react';
+import { ChevronDown, ChevronUp, House, LogOut, Users } from 'lucide-react';
 import { getNavItems, getRoleProfile } from '../lib/auth';
 import type { NavItem, NavSection } from '../lib/auth';
-import NotificationBell from './shared/NotificationBell';
+import Navbar from './Navbar';
 
 function isSection(entry: NavItem | NavSection): entry is NavSection {
   return 'type' in entry && entry.type === 'section';
@@ -15,28 +16,26 @@ function isSection(entry: NavItem | NavSection): entry is NavSection {
 const isItemActive = (itemPath: string, pathname: string) =>
   itemPath !== '#' && (pathname === itemPath || pathname.startsWith(itemPath + '/'));
 
-// The sidebar keeps the plain `group` name: NotificationBell reveals its label with `group-hover:`.
 const asideClasses =
-  'group fixed inset-y-0 left-0 z-40 flex w-20 flex-col overflow-hidden border-r border-[#111a62] bg-[#020849] text-white shadow-[10px_0_32px_rgba(2,8,73,0.28)] transition-[width,box-shadow] duration-300 ease-out hover:w-[280px] hover:shadow-[18px_0_42px_rgba(2,8,73,0.34)]';
+  'group fixed inset-y-0 left-0 z-40 flex w-20 flex-col overflow-hidden border-r border-[#111a62] bg-[#020849] text-white transition-[width] duration-300 ease-out hover:w-[280px]';
 const headerClasses =
   'flex h-20 shrink-0 items-center gap-0 border-b border-white/10 px-5 transition-all duration-300 group-hover:gap-3';
 const logoFrameClasses =
-  'flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-[#f4c400]/80 bg-[#061056] shadow-[0_0_0_1px_rgba(244,196,0,0.15)]';
+  'flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-[#f4c400]/80 bg-[#061056]';
 const labelRevealClasses =
   'max-w-0 min-w-0 translate-x-2 overflow-hidden whitespace-nowrap opacity-0 transition-all duration-300 ease-out group-hover:max-w-[190px] group-hover:translate-x-0 group-hover:opacity-100';
 const navClasses =
   'flex min-h-0 flex-1 flex-col space-y-2.5 overflow-y-auto overflow-x-hidden px-2 py-3 [scrollbar-color:rgba(255,255,255,0.12)_transparent] [scrollbar-width:thin] [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-white/10 hover:[&::-webkit-scrollbar-thumb]:bg-white/20 [&::-webkit-scrollbar]:w-1.5';
-// No backdrop-blur here: it would trap the bell's fixed-position popup inside the sidebar.
 const footerClasses = 'shrink-0 border-t border-white/10 bg-[#020849] px-3 py-3';
 const footerButtonClasses =
-  'mx-auto flex h-9 w-9 items-center justify-center gap-0 rounded-lg text-sm font-semibold transition-all duration-200 group-hover:mx-0 group-hover:w-full group-hover:justify-start group-hover:gap-3 group-hover:px-3.5';
+  'mx-auto flex h-9 w-9 items-center justify-center gap-0 rounded-lg text-sm font-medium transition-all duration-200 group-hover:mx-0 group-hover:w-full group-hover:justify-start group-hover:gap-3 group-hover:px-3.5';
 
 const navLinkClass = (isActive: boolean, indented: boolean) => {
-  const base = `mx-auto flex h-9 w-9 items-center justify-center gap-0 rounded-lg text-left text-sm font-medium tracking-tight transition-all duration-200 group-hover:justify-start group-hover:gap-3 group-hover:px-3 ${
+  const base = `mx-auto flex h-9 w-9 items-center justify-center gap-0 rounded-md text-left text-sm font-medium tracking-tight outline-none transition-colors duration-200 focus-visible:ring-2 focus-visible:ring-[#f4c400]/50 group-hover:justify-start group-hover:gap-3 group-hover:px-3 ${
     indented ? 'group-hover:ml-1.5 group-hover:mr-0 group-hover:w-[calc(100%-0.5rem)]' : 'group-hover:mx-0 group-hover:w-full'
   }`;
   return isActive
-    ? `${base} bg-[#f4c400] font-bold text-[#030737] shadow-[0_4px_16px_rgba(244,196,0,0.25)]`
+    ? `${base} bg-[#f4c400] font-semibold text-[#030737]`
     : `${base} text-[#9ba4db] hover:bg-white/10 hover:text-white`;
 };
 
@@ -88,7 +87,7 @@ function SidebarGroup({ section, expanded, pathname, onToggle, onItemClick }: Si
         aria-controls={groupId}
         aria-label={`${label} menu`}
         title={label}
-        className={`group/header relative mx-auto flex h-9 w-9 cursor-pointer items-center justify-center rounded-lg text-left transition-all duration-200 focus:outline-none focus-visible:ring-1 focus-visible:ring-[#f4c400]/50 group-hover:mx-0 group-hover:h-auto group-hover:w-full group-hover:justify-between group-hover:px-2.5 group-hover:py-1.5 ${
+        className={`group/header relative mx-auto flex h-9 w-9 cursor-pointer items-center justify-center rounded-md text-left transition-colors duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#f4c400]/50 group-hover:mx-0 group-hover:h-auto group-hover:w-full group-hover:justify-between group-hover:px-2.5 group-hover:py-1.5 ${
           highlighted ? 'bg-white/[0.08] text-[#f4c400]' : 'text-[#9ba4db] hover:bg-white/5 hover:text-white'
         }`}
       >
@@ -98,14 +97,14 @@ function SidebarGroup({ section, expanded, pathname, onToggle, onItemClick }: Si
             className={`h-[18px] w-[18px] shrink-0 transition-colors ${highlighted ? 'text-[#f4c400]' : 'text-[#9ba4db] group-hover/header:text-white'}`}
             strokeWidth={2}
           />
-          <span className="hidden select-none truncate text-[10.5px] font-extrabold uppercase tracking-wider text-[#f4c400] group-hover:inline">
+          <span className="hidden select-none truncate text-[10.5px] font-semibold uppercase tracking-wider text-[#f4c400] group-hover:inline">
             {label}
           </span>
         </span>
 
         {/* Shows on the collapsed rail which closed group holds the current page. */}
         {hasActiveChild && !expanded && (
-          <span aria-hidden="true" className="absolute right-1 top-1 h-2 w-2 rounded-full bg-[#f4c400] shadow-[0_0_8px_#f4c400] group-hover:hidden" />
+          <span aria-hidden="true" className="absolute right-1 top-1 h-2 w-2 rounded-full bg-[#f4c400] group-hover:hidden" />
         )}
 
         <ChevronDown
@@ -169,6 +168,54 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     if (active) setExpandedSection(active);
   }, [location.pathname, findActiveSection]);
 
+  const [isAccountMenuOpen, setIsAccountMenuOpen] = useState(false);
+  const [accountMenuPosition, setAccountMenuPosition] = useState<{ left: number; bottom: number } | null>(null);
+  const accountMenuRef = useRef<HTMLDivElement | null>(null);
+  const accountMenuPanelRef = useRef<HTMLDivElement | null>(null);
+
+  // Close the account menu on an outside click or Escape.
+  useEffect(() => {
+    if (!isAccountMenuOpen) return;
+    const onPointerDown = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (accountMenuRef.current?.contains(target) || accountMenuPanelRef.current?.contains(target)) return;
+      setIsAccountMenuOpen(false);
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setIsAccountMenuOpen(false);
+    };
+    document.addEventListener('mousedown', onPointerDown);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', onPointerDown);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [isAccountMenuOpen]);
+
+  useEffect(() => {
+    setIsAccountMenuOpen(false);
+  }, [location.pathname]);
+
+  // The menu renders on <body> so the sidebar's overflow cannot clip it; it opens upward from the account button.
+  useEffect(() => {
+    if (!isAccountMenuOpen) {
+      setAccountMenuPosition(null);
+      return;
+    }
+    const updatePosition = () => {
+      const rect = accountMenuRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      setAccountMenuPosition({ left: rect.left, bottom: Math.max(8, window.innerHeight - rect.top + 8) });
+    };
+    updatePosition();
+    window.addEventListener('resize', updatePosition);
+    window.addEventListener('scroll', updatePosition, true);
+    return () => {
+      window.removeEventListener('resize', updatePosition);
+      window.removeEventListener('scroll', updatePosition, true);
+    };
+  }, [isAccountMenuOpen]);
+
   const handleNavClick = (path: string) => {
     if (path === '#') return;
     if (/^https?:\/\//.test(path)) {
@@ -225,54 +272,91 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         </nav>
 
         <div className={footerClasses}>
-          <div className="mb-2">
-            <NotificationBell />
-          </div>
-
-          <button
-            type="button"
-            onClick={() => navigate(getRoleProfile(user?.role ?? 'Administrator'))}
-            title="Profile"
-            className="mb-2.5 flex w-full items-center justify-center gap-0 rounded-lg p-1.5 text-left transition-all duration-200 hover:bg-white/10 group-hover:justify-start group-hover:gap-3"
-          >
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#f4c400] text-xs font-extrabold text-[#030737] shadow-sm">
-              {initials}
-            </span>
-            <span className={labelRevealClasses}>
-              <span className="block max-w-[140px] truncate text-xs font-bold leading-4 text-white">{user?.fullName || 'username'}</span>
-              <span className="block text-[10px] font-medium leading-3 text-[#9ba4db]">{user?.role || 'Administrator'}</span>
-            </span>
-          </button>
-
           {canSwitchSystem(sessionUser) && (
             <button
               type="button"
               onClick={() => window.location.assign(switchSystemUrl())}
-              aria-label="Switch system"
-              title="Switch system"
+              aria-label="Back to home"
+              title="Back to home"
               className={`${footerButtonClasses} mb-1 text-[#9ba4db] hover:bg-white/10 hover:text-white`}
             >
-              <LayoutGrid aria-hidden="true" size={18} strokeWidth={1.8} />
-              <span className={labelRevealClasses}>Switch system</span>
+              <House aria-hidden="true" size={18} strokeWidth={1.8} />
+              <span className={labelRevealClasses}>Back to home</span>
             </button>
           )}
 
-          <button
-            type="button"
-            onClick={logout}
-            aria-label="Sign out"
-            title="Sign Out"
-            className={`${footerButtonClasses} text-[#ef4444] hover:bg-red-500/15`}
-          >
-            <LogOut aria-hidden="true" size={18} strokeWidth={1.8} />
-            <span className={labelRevealClasses}>Sign Out</span>
-          </button>
+          <div ref={accountMenuRef} className="relative mt-1">
+            {isAccountMenuOpen && accountMenuPosition && createPortal(
+              <div
+                ref={accountMenuPanelRef}
+                role="menu"
+                aria-label="Account menu"
+                className="fixed z-[70] w-56 rounded-lg border border-white/10 bg-[#061056] p-1.5 shadow-lg"
+                style={{ left: accountMenuPosition.left, bottom: accountMenuPosition.bottom }}
+              >
+                <div className="border-b border-white/10 px-2.5 py-2">
+                  <p className="truncate text-sm font-semibold text-white">{user?.fullName || 'username'}</p>
+                  <p className="truncate text-xs text-[#9ba4db]">{user?.email || user?.role || 'Administrator'}</p>
+                </div>
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="mt-1 flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-sm text-[#9ba4db] transition-colors hover:bg-white/10 hover:text-white"
+                  onClick={() => {
+                    setIsAccountMenuOpen(false);
+                    navigate(getRoleProfile(user?.role ?? 'Administrator'));
+                  }}
+                >
+                  <Users aria-hidden="true" size={16} strokeWidth={1.8} />
+                  <span>Profile</span>
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-sm text-[#ef4444] transition-colors hover:bg-red-500/15"
+                  onClick={() => {
+                    setIsAccountMenuOpen(false);
+                    logout();
+                  }}
+                >
+                  <LogOut aria-hidden="true" size={16} strokeWidth={1.8} />
+                  <span>Sign out</span>
+                </button>
+              </div>,
+              document.body,
+            )}
+
+            <button
+              type="button"
+              onClick={() => setIsAccountMenuOpen((open) => !open)}
+              aria-label={`Account menu for ${user?.fullName || 'username'}`}
+              aria-expanded={isAccountMenuOpen}
+              title={user?.fullName || 'Account'}
+              className="flex w-full items-center justify-center gap-0 rounded-md p-1.5 text-left transition-colors duration-200 hover:bg-white/10 group-hover:justify-start group-hover:gap-3"
+            >
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#f4c400] text-xs font-bold text-[#030737]">
+                {initials}
+              </span>
+              <span className={labelRevealClasses}>
+                <span className="block max-w-[140px] truncate text-xs font-semibold leading-4 text-white">{user?.fullName || 'username'}</span>
+                <span className="block text-[10px] font-medium leading-3 text-[#9ba4db]">{user?.role || 'Administrator'}</span>
+              </span>
+              <ChevronUp
+                aria-hidden="true"
+                size={14}
+                className={`ml-auto hidden text-[#9ba4db] transition-transform group-hover:block ${isAccountMenuOpen ? '' : 'rotate-180'}`}
+              />
+            </button>
+          </div>
         </div>
       </aside>
 
-      {/* Main content */}
-      <div className="min-w-0 flex-1 overflow-auto p-6">
-        {children}
+      {/* Main content, under the top bar with the breadcrumb and the notification bell */}
+      <div className="flex min-w-0 flex-1 flex-col overflow-auto">
+        <Navbar />
+        <div className="flex-1 p-6">
+          {children}
+        </div>
       </div>
     </div>
   );

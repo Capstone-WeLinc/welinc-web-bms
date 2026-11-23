@@ -408,8 +408,8 @@ export default function NotificationBell() {
   };
 
   return (
-    // Lives in the sidebar above the profile; the panel opens centred over the page.
-    <div className="relative mb-1" ref={containerRef}>
+    // Lives at the right end of the top bar; the panel opens centred over the page.
+    <div className="relative" ref={containerRef}>
       <button
         type="button"
         aria-label={unreadCount ? `Notifications, ${unreadCount} unread` : 'Notifications'}
@@ -417,13 +417,10 @@ export default function NotificationBell() {
         aria-haspopup="dialog"
         title="Notifications"
         onClick={() => { if (!open) void refresh(); setOpen((current) => !current); }}
-        className={`flex h-11 w-full items-center justify-center rounded-xl px-2 text-left text-sm transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#d4a72c]/60 group-hover:justify-start group-hover:gap-3 ${open ? 'bg-white/10 text-white' : 'text-[#a8b4d9]'}`}
+        className={`relative inline-flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 bg-white transition-colors hover:bg-slate-50 hover:text-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1a1f6e]/30 dark:border-slate-700 dark:bg-slate-900 dark:hover:bg-slate-800 dark:hover:text-slate-100 ${open ? 'text-slate-900 dark:text-slate-100' : 'text-slate-500 dark:text-slate-400'}`}
       >
-        <span className="relative flex h-10 w-10 shrink-0 items-center justify-center">
-          <Bell className="h-5 w-5" aria-hidden="true" />
-          {unreadCount > 0 && <span className="absolute right-0.5 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#d4a72c] px-1 text-[10px] font-bold leading-none text-[#0a0f3c]">{unreadCount > 99 ? '99+' : unreadCount}</span>}
-        </span>
-        <span className="hidden whitespace-nowrap group-hover:block">Notifications</span>
+        <Bell size={18} strokeWidth={1.8} aria-hidden="true" />
+        {unreadCount > 0 && <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#d4a72c] px-1 text-[9px] font-bold leading-none text-[#0a0f3c]">{unreadCount > 99 ? '99+' : unreadCount}</span>}
       </button>
 
       {/* Rendered on <body> and centred, so the sidebar cannot clip it. */}
