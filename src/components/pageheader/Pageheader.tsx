@@ -19,7 +19,7 @@ export default function PageHeader({
 }: PageHeaderProps) {
   const headerSpacing = spacing === "standard"
     ? "pb-6"
-    : "px-5 pb-6 pt-10";
+    : "px-5 pb-6";
   const iconAlignment = spacing === "standard" ? "justify-center" : "justify-start";
   const iconWidth = spacing === "standard" ? "w-12" : "w-9";
 

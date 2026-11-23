@@ -172,7 +172,7 @@ export default function ActivityLogs() {
         action={<DateRangeFilter from={from} to={to} onFromChange={setFrom} onToChange={setTo} />}
       />
 
-      <div role="tablist" aria-label="Activity source" className="inline-flex rounded-2xl border border-slate-200 bg-slate-100 p-1.5">
+      <div role="tablist" aria-label="Activity source" className="!mt-0 inline-flex rounded-2xl border border-slate-200 bg-slate-100 p-1.5">
         <TabButton active={tab === 'work'} icon={<ClipboardList size={17} aria-hidden="true" />} label="BMS work" onClick={() => chooseTab('work')} />
         <TabButton active={tab === 'accounts'} icon={<ShieldCheck size={17} aria-hidden="true" />} label="Accounts" onClick={() => chooseTab('accounts')} />
       </div>
