@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { Bell, CalendarClock, CalendarDays, CalendarOff, CalendarX2, Siren, ClipboardCheck, ClipboardList, FilePlus2, FileSearch, FileText, IdCard, RotateCcw, Truck, UsersRound, Wallet } from 'lucide-react';
 import { toast } from 'sonner';
@@ -379,31 +380,11 @@ export default function NotificationBell() {
     };
   }, [refresh, storageKey]);
 
-  // The panel opens beside the sidebar and follows its edge as it expands or collapses.
-  const [panelLeft, setPanelLeft] = useState(92);
   useEffect(() => {
     if (!open) return;
-    const sidebar = containerRef.current?.closest('[data-sidebar]');
-    if (!sidebar) return;
-    const place = () => setPanelLeft(sidebar.getBoundingClientRect().right + 12);
-    place();
-    const observer = new ResizeObserver(place);
-    observer.observe(sidebar);
-    return () => observer.disconnect();
-  }, [open]);
-
-  useEffect(() => {
-    if (!open) return;
-    const closeOnOutside = (event: PointerEvent) => {
-      if (!containerRef.current?.contains(event.target as Node)) setOpen(false);
-    };
     const closeOnEscape = (event: KeyboardEvent) => { if (event.key === 'Escape') setOpen(false); };
-    document.addEventListener('pointerdown', closeOnOutside);
     document.addEventListener('keydown', closeOnEscape);
-    return () => {
-      document.removeEventListener('pointerdown', closeOnOutside);
-      document.removeEventListener('keydown', closeOnEscape);
-    };
+    return () => document.removeEventListener('keydown', closeOnEscape);
   }, [open]);
 
   // Also filter at render time so any legacy or malformed shared storage
@@ -427,8 +408,7 @@ export default function NotificationBell() {
   };
 
   return (
-    // Lives in the sidebar above the profile. The panel is `fixed`, so the sidebar's
-    // overflow does not clip it, and hovering it keeps the sidebar expanded.
+    // Lives in the sidebar above the profile; the panel opens centred over the page.
     <div className="relative mb-1" ref={containerRef}>
       <button
         type="button"
@@ -446,17 +426,16 @@ export default function NotificationBell() {
         <span className="hidden whitespace-nowrap group-hover:block">Notifications</span>
       </button>
 
-      {open && <section
+      {/* Rendered on <body> and centred, so the sidebar cannot clip it. */}
+      {open && createPortal(<div
+        role="presentation"
+        className="fixed inset-0 z-[80] flex items-center justify-center bg-[rgba(0,0,0,0.5)] p-4"
+        onClick={(event) => { if (event.target === event.currentTarget) setOpen(false); }}
+      ><section
         role="dialog"
+        aria-modal="true"
         aria-label="Notifications"
-        className="fixed bottom-3 z-[80] flex flex-col overflow-hidden rounded-xl border border-slate-200 bg-white text-left text-slate-900 shadow-lg"
-        style={{
-          left: panelLeft,
-          boxSizing: 'border-box',
-          // A fixed, standard notification-panel size, so it never grows to the screen height or shrinks to its content.
-          width: `min(360px, calc(100vw - ${panelLeft + 12}px))`,
-          height: 'min(440px, calc(100vh - 24px))',
-        }}
+        className="flex h-[min(440px,calc(100vh-24px))] w-full max-w-[360px] flex-col overflow-hidden rounded-xl border border-slate-200 bg-white text-left text-slate-900 shadow-lg"
       >
         <header className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-100 px-4 py-3">
           <div className="flex min-w-0 items-center gap-2.5">
@@ -499,7 +478,7 @@ export default function NotificationBell() {
           )}
         </div>
         {roleNotifications.length > COLLAPSED_COUNT && <footer className="flex h-11 shrink-0 items-center justify-center border-t border-slate-100 bg-white px-4"><button type="button" onClick={() => setExpanded(value => !value)} className="rounded-md px-2 py-1 text-sm font-semibold text-[#1a1f6e] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1a1f6e]/30">{expanded ? 'Show fewer' : `View all ${roleNotifications.length} notifications`}</button></footer>}
-      </section>}
+      </section></div>, document.body)}
     </div>
   );
 }
