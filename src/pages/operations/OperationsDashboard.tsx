@@ -9,6 +9,7 @@ import KPICard from '../../components/shared/KpiCard';
 import StatusBadge from '../../components/shared/StatusBadge';
 import PageHeader from '../../components/pageheader/Pageheader';
 import { ActionRow, ScheduleJobRow, SectionCard } from '../../components/shared/DashboardSections';
+import RefreshButton from '../../components/shared/RefreshButton';
 import { isPastScheduleTime, manilaNow, parseScheduleTime, ScheduleStatusBadge, toDateKey } from '../../components/scheduling/ScheduleCalendar';
 
 const SCHEDULING_PATH = '/operations/scheduling';
@@ -121,6 +122,7 @@ export default function OperationsDashboard() {
         title="DASHBOARD"
         subtitle={<>Coordinate schedules, job orders, and fleet <span className="font-medium text-[#d4a72c]">availability.</span></>}
         subtitleClassName="mt-1 text-sm text-slate-500"
+        action={<RefreshButton onRefresh={load} />}
       />
 
       {failed && (
