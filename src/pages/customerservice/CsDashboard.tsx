@@ -9,6 +9,7 @@ import KPICard from '../../components/shared/KpiCard';
 import StatusBadge from '../../components/shared/StatusBadge';
 import PageHeader from '../../components/pageheader/Pageheader';
 import { ActionRow, SectionCard } from '../../components/shared/DashboardSections';
+import RefreshButton from '../../components/shared/RefreshButton';
 import { isPastScheduleTime, parseScheduleTime } from '../../components/scheduling/ScheduleCalendar';
 import { getCustomerServiceStatus, uniqueBookings, type CustomerServiceBooking } from './CsPostService';
 
@@ -131,6 +132,7 @@ export default function CsDashboard() {
         title="DASHBOARD"
         subtitle={<>Manage bookings, daily sales, and customer <span className="font-medium text-[#d4a72c]">service.</span></>}
         subtitleClassName="mt-1 text-sm text-slate-500"
+        action={<RefreshButton onRefresh={load} />}
       />
 
       {failed && (

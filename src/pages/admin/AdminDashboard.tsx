@@ -10,6 +10,7 @@ import { normalizeBookingStatus } from '../../lib/booking';
 import KPICard from '../../components/shared/KpiCard';
 import PageHeader from '../../components/pageheader/Pageheader';
 import { ActionRow, ScheduleJobRow, SectionCard, WatchRow } from '../../components/shared/DashboardSections';
+import RefreshButton from '../../components/shared/RefreshButton';
 import { isPastScheduleTime, manilaNow, parseScheduleTime, ScheduleStatusBadge, toDateKey } from '../../components/scheduling/ScheduleCalendar';
 import { uniqueBookings, type CustomerServiceBooking } from '../customerservice/CsPostService';
 import { getLicenseExpiryStatus } from './VehicleAvailability';
@@ -212,6 +213,7 @@ export default function AdminDashboard() {
         title="DASHBOARD"
         subtitle={<>Monitor operations, reports, and system <span className="font-medium text-[#d4a72c]">activity.</span></>}
         subtitleClassName="mt-1 text-sm text-slate-500"
+        action={<RefreshButton onRefresh={load} />}
       />
 
       {failed && (
