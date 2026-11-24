@@ -176,7 +176,7 @@ export default function OperationsJobOrder({ showKpis = false }: { showKpis?: bo
     const scheduleData = schedule as ApiSchedule;
     const assignedDriver = scheduleData?.assignedDriver || scheduleData?.driver;
     if (!schedule?.driverId && !assignedDriver) return '-';
-    const driver = drivers.find(item => item.id === schedule?.driverId || item.empId === schedule?.driverId);
+    const driver = drivers.find(item => item.id === schedule?.driverId);
     return driver?.fullName || driver?.name || assignedDriver?.fullName || assignedDriver?.name || String(schedule?.driverId || '-');
   }
 
@@ -191,8 +191,8 @@ export default function OperationsJobOrder({ showKpis = false }: { showKpis?: bo
     const assignedHelpers = Array.isArray(scheduleData?.assignedHelpers) ? scheduleData.assignedHelpers : Array.isArray(jobOrderData.helpers) ? jobOrderData.helpers : [];
     const helperIds = toTextList(schedule?.helperIds || jobOrderData.helperIds);
     const helperNames = helperIds.map(id => {
-      const helper = assignedHelpers.find((item: ApiCrew) => item.id === id || item.empId === id)
-        || helpers.find((item: ApiCrew) => item.id === id || item.empId === id);
+      const helper = assignedHelpers.find((item: ApiCrew) => item.id === id)
+        || helpers.find((item: ApiCrew) => item.id === id);
       return helper?.fullName || helper?.name || (looksLikeRecordId(id) ? 'Name unavailable' : id);
     });
     const vehicleRecord = vehicle || assignedVehicle;

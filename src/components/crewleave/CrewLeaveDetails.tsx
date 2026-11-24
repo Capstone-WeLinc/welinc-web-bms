@@ -7,7 +7,7 @@ import { StatusBadge } from '../ui/StandardTable';
  */
 
 export type CrewLeaveView = {
-  kind: string; status: string; crewName: string; crewType: string; crewEmpId: string;
+  kind: string; status: string; crewName: string; crewType: string;
   startDate: string; endDate: string; reason: string; decisionReason?: string | null;
 };
 export type CrewLeaveAudit = { actorName?: string; action: string; reason?: string | null; createdAt: string };
@@ -62,7 +62,6 @@ export default function CrewLeaveDetails({ request, audit, trips }: {
         In effect now – {request.crewName} is already unavailable.</p>}
       <div className="mt-3 grid grid-cols-2 gap-x-5 gap-y-4">
         <Field label="Crew member" value={`${request.crewName} (${role})`} />
-        <Field label="Employee ID" value={request.crewEmpId} />
         <Field label="Dates" value={dates} />
         <Field label="Duration" value={days === 1 ? '1 day' : `${days} days`} />
       </div>

@@ -105,7 +105,7 @@ function mapBookingToSchedule(booking: Booking): ScheduleEntry {
     deliveryType: booking.deliveryType as 'Inhouse' | 'Subcon' | undefined,
     vehicleId: typeof vehicleReference === 'object' ? vehicleReference?.id ?? null : vehicleReference ?? null,
     driverId: typeof driverReference === 'object'
-      ? driverReference?.id ?? driverReference?.driverId ?? driverReference?.driver_id ?? driverReference?.empId ?? null
+      ? driverReference?.id ?? driverReference?.driverId ?? driverReference?.driver_id ?? null
       : driverReference ?? null,
     helperIds: Array.isArray(booking.helperIds) ? booking.helperIds : [],
     permitRequired: Boolean(bookingData.permitRequired ?? bookingData.permit_required),
@@ -240,7 +240,7 @@ export default function Scheduling({ canAssign = true }: { canAssign?: boolean }
   }
 
   function getScheduleDriver(entry: ScheduleEntry) {
-    return drivers.find(driver => driver.id === entry.driverId || driver.empId === entry.driverId || driver.fullName === entry.assignedDriverName);
+    return drivers.find(driver => driver.id === entry.driverId || driver.fullName === entry.assignedDriverName);
   }
 
   function handleStatusFilter(filter: 'All' | 'Assigned' | 'Unassigned' | 'Calendar') {
@@ -378,7 +378,7 @@ export default function Scheduling({ canAssign = true }: { canAssign?: boolean }
     if (!assignTarget) return [];
     return drivers.filter((d) => {
       const id = d.id ?? '';
-      const isCurrentDriver = id === assignTarget.driverId || d.empId === assignTarget.driverId || d.fullName === assignTarget.assignedDriverName;
+      const isCurrentDriver = id === assignTarget.driverId || d.fullName === assignTarget.assignedDriverName;
       return id && (d.status === 'Available' || d.status === 'On Duty' || !d.status || isCurrentDriver);
     });
   }
@@ -472,7 +472,7 @@ export default function Scheduling({ canAssign = true }: { canAssign?: boolean }
 
   function getScheduleCrew(entry: ScheduleEntry): ScheduleCrew {
     const vehicle = vehicles.find(item => item.id === entry.vehicleId);
-    const helperNames = (entry.helperIds ?? []).map(id => helpers.find(helper => helper.id === id || helper.empId === id)?.fullName).filter(Boolean);
+    const helperNames = (entry.helperIds ?? []).map(id => helpers.find(helper => helper.id === id)?.fullName).filter(Boolean);
     return {
       truck: vehicle ? [vehicle.plate, vehicle.model].filter(Boolean).join(' · ') : entry.vehicleId ? 'Vehicle no longer in fleet' : 'Not assigned',
       truckMissing: !vehicle,
@@ -801,8 +801,8 @@ export default function Scheduling({ canAssign = true }: { canAssign?: boolean }
                         <SelectContent>
                           {availableDrivers.length === 0 && <SelectItem value="none" disabled>No available drivers</SelectItem>}
                           {availableDrivers.map(driver => (
-                            <SelectItem key={driver.id ?? (driver.empId ?? Math.random().toString())} value={driver.id ?? ''} disabled={resourceTiming?.drivers[driver.id ?? '']?.status === 'blocked' && driver.id !== selectedDriver}>
-                              {(driver.fullName ?? 'Unknown')} {driver.empId ? `(${driver.empId})` : ''}{timingNote(resourceTiming?.drivers[driver.id ?? ''])}
+                            <SelectItem key={driver.id ?? driver.fullName} value={driver.id ?? ''} disabled={resourceTiming?.drivers[driver.id ?? '']?.status === 'blocked' && driver.id !== selectedDriver}>
+                              {driver.fullName ?? 'Unknown'}{timingNote(resourceTiming?.drivers[driver.id ?? ''])}
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -822,7 +822,7 @@ export default function Scheduling({ canAssign = true }: { canAssign?: boolean }
                                 <UsersRound className="mr-2 h-[18px] w-[18px] shrink-0 text-slate-500" aria-hidden="true" /><SelectValue placeholder="Select or type a helper" />
                               </SelectTrigger>
                               <SelectContent>
-                                {availableHelpers.filter(helper => !selectedHelpers.includes(helper.id) || selectedHelpers[index] === helper.id).map(helper => <SelectItem key={helper.id} value={helper.id} disabled={resourceTiming?.helpers[helper.id]?.status === 'blocked' && selectedHelpers[index] !== helper.id}>{helper.fullName} ({helper.empId}){timingNote(resourceTiming?.helpers[helper.id])}</SelectItem>)}
+                                {availableHelpers.filter(helper => !selectedHelpers.includes(helper.id) || selectedHelpers[index] === helper.id).map(helper => <SelectItem key={helper.id} value={helper.id} disabled={resourceTiming?.helpers[helper.id]?.status === 'blocked' && selectedHelpers[index] !== helper.id}>{helper.fullName}{timingNote(resourceTiming?.helpers[helper.id])}</SelectItem>)}
                               </SelectContent>
                             </Select>
                             </div>
@@ -890,7 +890,7 @@ export default function Scheduling({ canAssign = true }: { canAssign?: boolean }
         vehicleModel={(() => { const vehicle = vehicles.find(v => v.id === viewTarget?.vehicleId); return vehicle ? [vehicle.brand, vehicle.model].filter(Boolean).join(' ') : undefined; })()}
         garage={vehicles.find(v => v.id === viewTarget?.vehicleId)?.garage}
         driver={viewTarget ? getScheduleDriver(viewTarget)?.fullName : undefined}
-        helpers={viewTarget?.helperIds.map(id => helpers.find(helper => helper.id === id || helper.empId === id)?.fullName).filter(Boolean).join(', ')}
+        helpers={viewTarget?.helperIds.map(id => helpers.find(helper => helper.id === id)?.fullName).filter(Boolean).join(', ')}
       />
     </div>
   );

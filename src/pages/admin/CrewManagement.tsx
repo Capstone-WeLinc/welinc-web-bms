@@ -1,21 +1,16 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { AlertTriangle, CircleCheck, Clock3, Contact, MoreVertical, Pencil, Plus, ShieldAlert, Trash2, UserCheck, Users } from 'lucide-react';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '../../components/ui/Dropdown';
-import { toast } from 'sonner';
+import { AlertTriangle, CircleCheck, Clock3, Contact, Pencil, ShieldAlert, UserCheck, Users } from 'lucide-react';
 import PageHeader from '../../components/pageheader/Pageheader';
 import TablePagination from '../../components/ui/TablePagination';
 import { SearchInput, StatusFilter } from '../../components/ui/ListSearchFilters';
 import CrewEditDialog from '../../components/availability/CrewEditDialog';
 import { loadCrew } from '../../components/availability/crewData';
-import { confirm } from '../../components/shared/confirm/confirm';
-import { apiProblem } from '../../lib/api-shapes';
-import { deleteCrewMember, type CrewMember, type CrewRole, type CrewStatus } from '../../lib/api/crewService';
+import { initialsOf, type CrewMember, type CrewRole, type CrewStatus } from '../../lib/api/crewService';
 
 type Kind = 'drivers' | 'helpers';
 type StatusChoice = 'All' | CrewStatus;
 
 const STATUS_OPTIONS: StatusChoice[] = ['All', 'Available', 'On Duty', 'On Leave'];
-const roleOf = (kind: Kind): CrewRole => (kind === 'drivers' ? 'DRIVER' : 'HELPER');
 const DAY = 86_400_000;
 
 /** A YYYY-MM-DD day shown as "18 Nov 2026". */
@@ -28,7 +23,6 @@ const formatPhone = (value: string) => {
   const digits = value.replace(/\D/g, '').replace(/^63/, '').replace(/^0/, '');
   return /^9\d{9}$/.test(digits) ? `+63 ${digits.slice(0, 3)} ${digits.slice(3, 6)} ${digits.slice(6)}` : value || '-';
 };
-const initialsOf = (name: string) => name.split(/\s+/).filter(Boolean).slice(0, 2).map(part => part[0]?.toUpperCase()).join('');
 const daysUntil = (value: string) => (/^\d{4}-\d{2}-\d{2}$/.test(value) ? Math.floor((new Date(`${value}T00:00:00`).getTime() - Date.now()) / DAY) + 1 : null);
 
 /** The same status pill as the driver and helper cards on Vehicle & Team Availability. */
@@ -59,21 +53,22 @@ function SummaryCard({ label, value, tone, icon: Icon, active, onClick }: { labe
   );
 }
 
-/** Edit and Delete grouped under one ellipsis, in the same menu style as the crew cards on Vehicle & Team Availability. */
-function RowActions({ name, onEdit, onDelete }: { name: string; onEdit: () => void; onDelete: () => void }) {
-  const item = 'flex cursor-pointer items-center gap-3 rounded-none px-4 py-2.5 text-sm text-[#344158] focus:bg-[#f8fafc]';
+/**
+ * The row's only action (spec bms/0012): Edit opens the form for the BMS details. Name, email and
+ * contact number are edited in the portal, through the link inside that form. There is no Delete:
+ * a driver or helper leaves this list when their role is removed in the portal.
+ */
+function EditButton({ name, onEdit }: { name: string; onEdit: () => void }) {
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <button type="button" aria-label={`Actions for ${name}`} className="flex h-8 w-8 items-center justify-center rounded-full text-[#070b45] transition hover:bg-[#f1f5f9] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1a1f6e]/30">
-          <MoreVertical size={18} strokeWidth={2.4} aria-hidden="true" />
-        </button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-40 min-w-0 overflow-hidden rounded-xl border border-[#dce3ed] bg-white p-0 py-1.5 shadow-[0_10px_24px_rgba(15,23,42,0.22)]">
-        <DropdownMenuItem onClick={onEdit} className={item}><Pencil className="h-4 w-4" aria-hidden="true" /> Edit</DropdownMenuItem>
-        <DropdownMenuItem onClick={onDelete} className="flex cursor-pointer items-center gap-3 rounded-none px-4 py-2.5 text-sm text-[#ff4040] focus:bg-[#fff1f1] focus:text-[#ff4040]"><Trash2 className="h-4 w-4" aria-hidden="true" /> Delete</DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <button
+      type="button"
+      onClick={onEdit}
+      aria-label={`Edit ${name}`}
+      className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium text-[#1a1f6e] transition hover:bg-[#eef0fa] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1a1f6e]/30"
+    >
+      <Pencil className="h-4 w-4" aria-hidden="true" />
+      Edit
+    </button>
   );
 }
 
@@ -117,7 +112,7 @@ export default function CrewManagement() {
   const [status, setStatus] = useState<StatusChoice>('All');
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(8);
-  const [editTarget, setEditTarget] = useState<{ role: CrewRole; id: string | null } | null>(null);
+  const [editTarget, setEditTarget] = useState<{ role: CrewRole; id: string } | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -146,8 +141,8 @@ export default function CrewManagement() {
     const term = search.trim().toLowerCase();
     return rows
       .filter(row => status === 'All' || row.status === status)
-      .filter(row => !term || [row.fullName, row.empId, row.email, row.contact, row.licenseNo].some(text => text.toLowerCase().includes(term)))
-      .sort((a, b) => a.empId.localeCompare(b.empId, undefined, { numeric: true }));
+      .filter(row => !term || [row.fullName, row.email, row.contact, row.licenseNo].some(text => text.toLowerCase().includes(term)))
+      .sort((a, b) => a.fullName.localeCompare(b.fullName));
   }, [rows, search, status]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / limit));
@@ -159,27 +154,10 @@ export default function CrewManagement() {
   const noun = kind === 'drivers' ? 'driver' : 'helper';
   const Noun = kind === 'drivers' ? 'Driver' : 'Helper';
 
-  /** Show a saved add or edit straight away, without reloading the list. */
+  /** Show a saved edit straight away, without reloading the list. */
   const applySaved = (member: CrewMember) => {
     const key: Kind = member.role === 'DRIVER' ? 'drivers' : 'helpers';
-    setCrew(old => ({ ...old, [key]: old[key].some(row => row.id === member.id) ? old[key].map(row => (row.id === member.id ? member : row)) : [...old[key], member] }));
-  };
-
-  const remove = async (member: CrewMember) => {
-    const confirmed = await confirm({
-      title: `Delete ${noun}?`,
-      description: `${member.fullName} (${member.empId}) will be removed from the team list and can no longer be assigned to bookings. Past job records keep their name.`,
-      confirmText: 'Delete',
-      tone: 'destructive',
-    });
-    if (!confirmed) return;
-    try {
-      await deleteCrewMember(member.role, member.id);
-      setCrew(old => ({ ...old, [kind]: old[kind].filter(row => row.id !== member.id) }));
-      toast.success(`${Noun} deleted`, { description: `${member.fullName} was removed from the list.` });
-    } catch (requestError: unknown) {
-      toast.error(apiProblem(requestError).message || `Unable to delete the ${noun}.`);
-    }
+    setCrew(old => ({ ...old, [key]: old[key].map(row => (row.id === member.id ? member : row)) }));
   };
 
   const cards = [
@@ -188,25 +166,15 @@ export default function CrewManagement() {
     { label: 'On duty', value: counts.onDuty, tone: 'bg-blue-50 text-blue-700', icon: Clock3, target: 'On Duty' as StatusChoice },
     { label: 'On leave', value: counts.onLeave, tone: 'bg-purple-50 text-purple-700', icon: UserCheck, target: 'On Leave' as StatusChoice },
   ];
-  const headings = ['Employee ID', 'Name', 'Contact', 'Status', 'Join date', ...(kind === 'drivers' ? ['License'] : []), 'Actions'];
+  const headings = ['Name', 'Contact', 'Status', 'Join date', ...(kind === 'drivers' ? ['License'] : []), 'Actions'];
 
   return (
     <div className="space-y-5">
       <PageHeader
         icon={UserCheck}
         title="TEAM MANAGEMENT"
-        subtitle={<>Manage driver and helper dispatch profiles. <span className="font-medium text-[#b8860b]">Sign-in accounts are managed in the portal.</span></>}
+        subtitle="Manage driver and helper dispatch details."
         subtitleClassName="mt-1 text-sm text-slate-500"
-        action={
-          <button
-            type="button"
-            onClick={() => setEditTarget({ role: roleOf(kind), id: null })}
-            className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-[#1a1f6e] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#141a6b] sm:w-auto"
-          >
-            <Plus size={16} aria-hidden="true" />
-            ADD {noun.toUpperCase()}
-          </button>
-        }
       />
 
       <div role="tablist" aria-label="Team member type" className="!mt-0 inline-flex rounded-2xl border border-slate-200 bg-slate-100 p-1.5">
@@ -219,7 +187,7 @@ export default function CrewManagement() {
       </div>
 
       <div className="flex flex-col items-start justify-between gap-4 border border-b-0 border-slate-200 bg-white p-4 lg:flex-row lg:items-center">
-        <SearchInput value={search} onChange={value => { setSearch(value); setPage(1); }} placeholder={`Search ${noun} name, employee ID, email or contact...`} />
+        <SearchInput value={search} onChange={value => { setSearch(value); setPage(1); }} placeholder={`Search ${noun} name, email, contact or license...`} />
         <StatusFilter options={STATUS_OPTIONS} value={status} onChange={chooseStatus} allValue="All" allLabel="All Status" ariaLabel={`Filter ${kind} by status`} />
       </div>
 
@@ -246,12 +214,11 @@ export default function CrewManagement() {
                     <td colSpan={headings.length} className="px-4 py-16 text-center">
                       <Users className="mx-auto mb-2 h-8 w-8 text-slate-400" aria-hidden="true" />
                       <p className="text-sm font-semibold text-slate-800">{rows.length === 0 ? `No ${kind} yet` : `No ${kind} match your filters`}</p>
-                      <p className="mt-1 text-sm text-slate-500">{rows.length === 0 ? `Add a ${noun} to start assigning them to bookings.` : 'Try a different search or status.'}</p>
+                      <p className="mt-1 text-sm text-slate-500">{rows.length === 0 ? `A ${noun} shows up here once they have a BMS account with the ${Noun} role.` : 'Try a different search or status.'}</p>
                     </td>
                   </tr>
                 ) : visible.map(member => (
                   <tr key={member.id} className="transition-colors hover:bg-slate-50/70">
-                    <td className="whitespace-nowrap px-4 py-3 align-middle font-medium tabular-nums text-[#1a1f6e]">{member.empId || '-'}</td>
                     <td className="px-4 py-3 align-middle">
                       <div className="flex min-w-0 items-center gap-3">
                         <span aria-hidden="true" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#eef0fa] text-xs font-semibold text-[#1a1f6e]">{initialsOf(member.fullName) || '?'}</span>
@@ -267,7 +234,7 @@ export default function CrewManagement() {
                     {kind === 'drivers' && <td className="px-4 py-3 align-middle"><LicenseCell member={member} /></td>}
                     <td className="px-4 py-3 align-middle">
                       <div className="flex justify-center">
-                        <RowActions name={member.fullName} onEdit={() => setEditTarget({ role: member.role, id: member.id })} onDelete={() => void remove(member)} />
+                        <EditButton name={member.fullName} onEdit={() => setEditTarget({ role: member.role, id: member.id })} />
                       </div>
                     </td>
                   </tr>
