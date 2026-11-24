@@ -134,25 +134,25 @@ export const SAMPLE_JOB_ORDERS: JobOrder[] = [
 
 
 export const SAMPLE_DRIVERS: Driver[] = [
-  { id: 'd001', empId: 'EMP-001', fullName: 'Roberto Fernandez', initials: 'RF', contact: '+63 917 111 2222', email: 'rfernandez@welinc.ph', address: '12 Sampaguita St., Pasig City', licenseNo: 'N01-23-456789', licenseType: 'Professional', licenseExpiry: '2027-04-30', status: 'On Duty', totalTrips: 234, joinDate: '2021-06-01', emergencyName: 'Lita Fernandez', emergencyContact: '+63 917 333 4444', vehicleId: 'v002' },
-  { id: 'd002', empId: 'EMP-002', fullName: 'Eduardo Bautista', initials: 'EB', contact: '+63 918 222 3333', email: 'ebautista@welinc.ph', address: '45 Maribago Ave., Cebu City', licenseNo: 'N07-24-789012', licenseType: 'Professional', licenseExpiry: '2028-01-15', status: 'On Duty', totalTrips: 187, joinDate: '2022-01-15', emergencyName: 'Rosa Bautista', emergencyContact: '+63 918 444 5555', vehicleId: 'v003' },
-  { id: 'd003', empId: 'EMP-003', fullName: 'Carlos Mendoza', initials: 'CM', contact: '+63 919 333 4444', email: 'cmendoza@welinc.ph', address: '78 Daang Hari Rd., Las Pinas', licenseNo: 'N02-22-123456', licenseType: 'Professional', licenseExpiry: '2026-08-20', status: 'Available', totalTrips: 312, joinDate: '2020-03-10', emergencyName: 'Elena Mendoza', emergencyContact: '+63 919 555 6666', vehicleId: null },
-  { id: 'd004', empId: 'EMP-004', fullName: 'Danilo Reyes', initials: 'DR', contact: '+63 920 444 5555', email: 'dreyes@welinc.ph', address: '101 Mabini St., Caloocan City', licenseNo: 'N05-25-654321', licenseType: 'Non-Professional', licenseExpiry: '2027-11-30', status: 'On Duty', totalTrips: 98, joinDate: '2023-07-20', emergencyName: 'Maricel Reyes', emergencyContact: '+63 920 666 7777', vehicleId: 'v007' },
-  { id: 'd005', empId: 'EMP-005', fullName: 'Felix Santos', initials: 'FS', contact: '+63 921 555 6666', email: 'fsantos@welinc.ph', address: '23 Bonifacio St., Marikina City', licenseNo: 'N03-23-987654', licenseType: 'Professional', licenseExpiry: '2026-12-31', status: 'Off Duty', totalTrips: 156, joinDate: '2021-11-05', emergencyName: 'Grace Santos', emergencyContact: '+63 921 777 8888', vehicleId: null },
-  { id: 'd006', empId: 'EMP-006', fullName: 'Gregorio Lim', initials: 'GL', contact: '+63 922 666 7777', email: 'glim@welinc.ph', address: '56 Aguinaldo Hwy., Cavite City', licenseNo: 'N09-24-246810', licenseType: 'Professional', licenseExpiry: '2027-06-15', status: 'On Leave', totalTrips: 201, joinDate: '2021-04-12', emergencyName: 'Sonia Lim', emergencyContact: '+63 922 888 9999', vehicleId: null },
-  { id: 'd007', empId: 'EMP-007', fullName: 'Henry Cruz', initials: 'HC', contact: '+63 923 777 8888', email: 'hcruz@welinc.ph', address: '89 Sumulong Hwy., Antipolo City', licenseNo: 'N04-22-135790', licenseType: 'Professional', licenseExpiry: '2026-09-01', status: 'Available', totalTrips: 278, joinDate: '2020-09-18', emergencyName: 'Norma Cruz', emergencyContact: '+63 923 999 0000', vehicleId: null },
+  { id: 'd001', fullName: 'Roberto Fernandez', contact: '+63 917 111 2222', email: 'rfernandez@welinc.ph', address: '12 Sampaguita St., Pasig City', licenseNo: 'N01-23-456789', licenseType: 'Professional', licenseExpiry: '2027-04-30', status: 'On Duty', joinDate: '2021-06-01', emergencyName: 'Lita Fernandez', emergencyContact: '+63 917 333 4444', vehicleId: 'v002' },
+  { id: 'd002', fullName: 'Eduardo Bautista', contact: '+63 918 222 3333', email: 'ebautista@welinc.ph', address: '45 Maribago Ave., Cebu City', licenseNo: 'N07-24-789012', licenseType: 'Professional', licenseExpiry: '2028-01-15', status: 'On Duty', joinDate: '2022-01-15', emergencyName: 'Rosa Bautista', emergencyContact: '+63 918 444 5555', vehicleId: 'v003' },
+  { id: 'd003', fullName: 'Carlos Mendoza', contact: '+63 919 333 4444', email: 'cmendoza@welinc.ph', address: '78 Daang Hari Rd., Las Pinas', licenseNo: 'N02-22-123456', licenseType: 'Professional', licenseExpiry: '2026-08-20', status: 'Available', joinDate: '2020-03-10', emergencyName: 'Elena Mendoza', emergencyContact: '+63 919 555 6666', vehicleId: null },
+  { id: 'd004', fullName: 'Danilo Reyes', contact: '+63 920 444 5555', email: 'dreyes@welinc.ph', address: '101 Mabini St., Caloocan City', licenseNo: 'N05-25-654321', licenseType: 'Non-Professional', licenseExpiry: '2027-11-30', status: 'On Duty', joinDate: '2023-07-20', emergencyName: 'Maricel Reyes', emergencyContact: '+63 920 666 7777', vehicleId: 'v007' },
+  { id: 'd005', fullName: 'Felix Santos', contact: '+63 921 555 6666', email: 'fsantos@welinc.ph', address: '23 Bonifacio St., Marikina City', licenseNo: 'N03-23-987654', licenseType: 'Professional', licenseExpiry: '2026-12-31', status: 'Off Duty', joinDate: '2021-11-05', emergencyName: 'Grace Santos', emergencyContact: '+63 921 777 8888', vehicleId: null },
+  { id: 'd006', fullName: 'Gregorio Lim', contact: '+63 922 666 7777', email: 'glim@welinc.ph', address: '56 Aguinaldo Hwy., Cavite City', licenseNo: 'N09-24-246810', licenseType: 'Professional', licenseExpiry: '2027-06-15', status: 'On Leave', joinDate: '2021-04-12', emergencyName: 'Sonia Lim', emergencyContact: '+63 922 888 9999', vehicleId: null },
+  { id: 'd007', fullName: 'Henry Cruz', contact: '+63 923 777 8888', email: 'hcruz@welinc.ph', address: '89 Sumulong Hwy., Antipolo City', licenseNo: 'N04-22-135790', licenseType: 'Professional', licenseExpiry: '2026-09-01', status: 'Available', joinDate: '2020-09-18', emergencyName: 'Norma Cruz', emergencyContact: '+63 923 999 0000', vehicleId: null },
 ];
 
 
 export const SAMPLE_HELPERS: Helper[] = [
-  { id: 'h001', empId: 'HLP-001', fullName: 'Jose Ramos', initials: 'JR', contact: '+63 924 111 2222', status: 'Available', totalTrips: 145, joinDate: '2022-03-15' },
-  { id: 'h002', empId: 'HLP-002', fullName: 'Pedro Garcia', initials: 'PG', contact: '+63 925 222 3333', status: 'On Duty', totalTrips: 98, joinDate: '2023-01-10' },
-  { id: 'h003', empId: 'HLP-003', fullName: 'Miguel Torres', initials: 'MT', contact: '+63 926 333 4444', status: 'Available', totalTrips: 212, joinDate: '2021-08-20' },
-  { id: 'h004', empId: 'HLP-004', fullName: 'Ramon Villanueva', initials: 'RV', contact: '+63 927 444 5555', status: 'On Duty', totalTrips: 76, joinDate: '2023-09-05' },
-  { id: 'h005', empId: 'HLP-005', fullName: 'Alfredo Navarro', initials: 'AN', contact: '+63 928 555 6666', status: 'Off Duty', totalTrips: 189, joinDate: '2022-06-12' },
-  { id: 'h006', empId: 'HLP-006', fullName: 'Ernesto Ocampo', initials: 'EO', contact: '+63 929 666 7777', status: 'Available', totalTrips: 134, joinDate: '2022-11-30' },
-  { id: 'h007', empId: 'HLP-007', fullName: 'Rodrigo Castillo', initials: 'RC', contact: '+63 930 777 8888', status: 'On Leave', totalTrips: 56, joinDate: '2024-02-14' },
-  { id: 'h008', empId: 'HLP-008', fullName: 'Nestor Dela Vega', initials: 'ND', contact: '+63 931 888 9999', status: 'Available', totalTrips: 167, joinDate: '2022-04-01' },
+  { id: 'h001', fullName: 'Jose Ramos', contact: '+63 924 111 2222', status: 'Available', joinDate: '2022-03-15' },
+  { id: 'h002', fullName: 'Pedro Garcia', contact: '+63 925 222 3333', status: 'On Duty', joinDate: '2023-01-10' },
+  { id: 'h003', fullName: 'Miguel Torres', contact: '+63 926 333 4444', status: 'Available', joinDate: '2021-08-20' },
+  { id: 'h004', fullName: 'Ramon Villanueva', contact: '+63 927 444 5555', status: 'On Duty', joinDate: '2023-09-05' },
+  { id: 'h005', fullName: 'Alfredo Navarro', contact: '+63 928 555 6666', status: 'Off Duty', joinDate: '2022-06-12' },
+  { id: 'h006', fullName: 'Ernesto Ocampo', contact: '+63 929 666 7777', status: 'Available', joinDate: '2022-11-30' },
+  { id: 'h007', fullName: 'Rodrigo Castillo', contact: '+63 930 777 8888', status: 'On Leave', joinDate: '2024-02-14' },
+  { id: 'h008', fullName: 'Nestor Dela Vega', contact: '+63 931 888 9999', status: 'Available', joinDate: '2022-04-01' },
 ];
 
 

@@ -90,7 +90,7 @@ function TypeDetails({ item, detail }: { item: ApprovalItem; detail: Detail }) {
   const trips = Array.isArray(detail.affectedTrips) ? detail.affectedTrips as CrewLeaveTrip[] : [];
   const days = start ? leaveDays(start, end) : 0;
   return <>
-    <Row label="Employee ID">{text(detail.crewEmpId, item.bookingNo)}</Row>
+    <Row label="Crew member">{text(detail.crewName, item.bookingNo)}{detail.crewType ? ` (${detail.crewType === 'DRIVER' ? 'Driver' : 'Helper'})` : ''}</Row>
     <Row label="Dates">{start ? (start === end ? leaveDate(start) : `${leaveDate(start)} – ${leaveDate(end)}`) : 'Not available'}</Row>
     <Row label="Duration">{days === 1 ? '1 day' : `${days} days`}</Row>
     <Row label="Reason">{text(detail.reason)}</Row>

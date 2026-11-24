@@ -166,11 +166,14 @@ export interface Vehicle {
 
 export type CrewStatus = 'Available' | 'On Duty' | 'Off Duty' | 'On Leave';
 
+/**
+ * A driver. `userId`, `fullName`, `email` and `contact` come from the account in Auth; BMS keeps no
+ * employee ID, initials or trip count (spec bms/0012). Initials are worked out from the name.
+ */
 export interface Driver {
   id: string;
-  empId: string;
+  userId?: string;
   fullName: string;
-  initials: string;
   contact: string;
   email: string;
   address: string;
@@ -178,7 +181,6 @@ export interface Driver {
   licenseType: string;
   licenseExpiry: string;
   status: CrewStatus;
-  totalTrips: number;
   joinDate: string;
   emergencyName: string;
   emergencyContact: string;
@@ -187,15 +189,14 @@ export interface Driver {
   leaveUntil?: string;
 }
 
+/** A helper; as with `Driver`, the account fields come from Auth (spec bms/0012). */
 export interface Helper {
   id: string;
-  empId: string;
+  userId?: string;
   fullName: string;
-  initials: string;
   contact: string;
   email?: string;
   status: CrewStatus;
-  totalTrips: number;
   joinDate: string;
   emergencyName?: string;
   emergencyContact?: string;

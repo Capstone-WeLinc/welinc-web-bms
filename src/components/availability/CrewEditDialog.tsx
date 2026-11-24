@@ -1,25 +1,28 @@
 import { apiProblem } from '../../lib/api-shapes';
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
-import { Loader2, Pencil } from 'lucide-react';
+import { ExternalLink, Loader2, Pencil } from 'lucide-react';
 import { toast } from 'sonner';
 import { Dialog, DialogContent } from '../ui/Dialog';
 import ModalHeader from '../ui/ModalHeader';
 import { DatePicker } from '../ui/DatePicker';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/Select';
-import { loadCrew, manilaDay } from './crewData';
+import { loadCrew } from './crewData';
 import {
   CREW_STATUS_OPTIONS,
   LICENSE_TYPES,
-  createCrewMember,
+  portalAccountUrl,
   updateCrewMember,
   type CrewMember,
   type CrewRole,
   type CrewStatus,
 } from '../../lib/api/crewService';
 
-/** Edit form for a driver or helper, in the One UI modal layout (navy header, section cards, footer actions). */
+/**
+ * Edit form for a driver's or helper's BMS details, in the One UI modal layout (navy header, section
+ * cards, footer actions). Name, email and contact number come from the account in Auth: they are
+ * shown read-only here, with a link to edit them in the portal (spec bms/0012).
+ */
 
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const REQUIRED = 'This field is required.';
 const MOBILE = 'Enter a 10-digit Philippine mobile number starting with 9.';
 
@@ -42,9 +45,6 @@ const controlClass = 'mt-1.5 h-11 w-full rounded-lg border border-slate-300 bg-w
 const invalidControlClass = '!border-red-500 focus:!border-red-500 focus:!ring-red-500/10';
 
 type FormState = {
-  fullName: string;
-  email: string;
-  contact: string;
   status: CrewStatus;
   joinDate: string;
   licenseNo: string;
@@ -56,9 +56,6 @@ type FormState = {
 type FieldKey = keyof FormState;
 
 const toForm = (member: CrewMember): FormState => ({
-  fullName: member.fullName,
-  email: member.email,
-  contact: member.contact,
   status: member.status,
   joinDate: member.joinDate,
   licenseNo: member.licenseNo,
@@ -66,20 +63,6 @@ const toForm = (member: CrewMember): FormState => ({
   licenseExpiry: member.licenseExpiry,
   emergencyName: member.emergencyName,
   emergencyContact: member.emergencyContact,
-});
-
-/** A blank form for a new crew member: available, joining today (Manila). */
-const blankForm = (): FormState => ({
-  fullName: '',
-  email: '',
-  contact: '',
-  status: 'Available',
-  joinDate: manilaDay(new Date().toISOString()),
-  licenseNo: '',
-  licenseType: 'Professional',
-  licenseExpiry: '',
-  emergencyName: '',
-  emergencyContact: '',
 });
 
 function FormSection({ title, children }: { title: string; children: ReactNode }) {
@@ -90,6 +73,29 @@ function FormSection({ title, children }: { title: string; children: ReactNode }
         {title}
       </h3>
       <div className="mt-3 grid gap-4 sm:grid-cols-2">{children}</div>
+    </section>
+  );
+}
+
+/** The account's own details, which only the portal edits. */
+function AccountSection({ member }: { member: CrewMember }) {
+  const formatted = member.contact.replace(/^\+63(\d{3})(\d{3})(\d{4})$/, '+63 $1 $2 $3');
+  return (
+    <section className="rounded-2xl border border-slate-200/70 bg-white p-4 shadow-sm">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h3 className="flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-[#1a1f6e]">
+          <span aria-hidden="true" className="h-4 w-[3px] rounded-full bg-[#e8b800]" />
+          Account
+        </h3>
+        <a href={portalAccountUrl(member.userId)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-sm font-semibold text-[#1a1f6e] underline-offset-4 hover:underline">
+          Edit in portal <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
+        </a>
+      </div>
+      <dl className="mt-3 grid gap-4 sm:grid-cols-2">
+        <div className="sm:col-span-2"><dt className="text-sm font-medium text-slate-700">Full name</dt><dd className="mt-1 text-base text-slate-900">{member.fullName || '-'}</dd></div>
+        <div className="min-w-0"><dt className="text-sm font-medium text-slate-700">Email</dt><dd className="mt-1 truncate text-base text-slate-900">{member.email || '-'}</dd></div>
+        <div><dt className="text-sm font-medium text-slate-700">Contact number</dt><dd className="mt-1 text-base tabular-nums text-slate-900">{formatted || '-'}</dd></div>
+      </dl>
     </section>
   );
 }
@@ -146,8 +152,8 @@ function ChoiceField({ label, value, options, onChange }: { label: string; value
 }
 
 export default function CrewEditDialog({ target, onClose, onSaved }: {
-  /** The driver or helper to edit, or `id: null` to add a new one; null keeps the dialog closed. */
-  target: { role: CrewRole; id: string | null } | null;
+  /** The driver or helper to edit; null keeps the dialog closed. Crew are never added here. */
+  target: { role: CrewRole; id: string } | null;
   onClose: () => void;
   onSaved: (member: CrewMember) => void;
 }) {
@@ -159,11 +165,10 @@ export default function CrewEditDialog({ target, onClose, onSaved }: {
   const [saving, setSaving] = useState(false);
 
   const isDriver = target?.role === 'DRIVER';
-  const isNew = target?.id === null;
   const noun = isDriver ? 'driver' : 'helper';
 
   // Load the full record (emergency contact and license fields included) each time the dialog opens.
-  // Adding loads the list too, so a driver's license number is still checked for duplicates.
+  // The whole list is kept so a driver's license number is checked for duplicates.
   useEffect(() => {
     if (!target) return;
     let active = true;
@@ -174,11 +179,6 @@ export default function CrewEditDialog({ target, onClose, onSaved }: {
     loadCrew(target.role)
       .then(list => {
         if (!active) return;
-        if (target.id === null) {
-          setForm(blankForm());
-          setDrivers(target.role === 'DRIVER' ? list : []);
-          return;
-        }
         const found = list.find(item => item.id === target.id);
         if (!found) { setLoadError(true); return; }
         setMember(found);
@@ -190,21 +190,13 @@ export default function CrewEditDialog({ target, onClose, onSaved }: {
   }, [target]);
 
   const fields: FieldKey[] = isDriver
-    ? ['fullName', 'email', 'contact', 'joinDate', 'licenseNo', 'licenseExpiry', 'emergencyName', 'emergencyContact']
-    : ['fullName', 'email', 'contact', 'joinDate', 'emergencyName', 'emergencyContact'];
+    ? ['joinDate', 'licenseNo', 'licenseExpiry', 'emergencyName', 'emergencyContact']
+    : ['joinDate', 'emergencyName', 'emergencyContact'];
 
   const fieldError = (key: FieldKey): string => {
     if (!form) return '';
     const value = String(form[key] ?? '').trim();
     switch (key) {
-      case 'fullName':
-        if (!value) return REQUIRED;
-        return value.length > 100 ? 'Use 100 characters or fewer.' : '';
-      case 'email':
-        if (!value) return REQUIRED;
-        if (!EMAIL_PATTERN.test(value)) return 'The email address entered is invalid';
-        return value.length > 160 ? 'Use 160 characters or fewer.' : '';
-      case 'contact':
       case 'emergencyContact':
         if (!subscriberDigits(value)) return REQUIRED;
         return isValidMobile(value) ? '' : MOBILE;
@@ -239,9 +231,6 @@ export default function CrewEditDialog({ target, onClose, onSaved }: {
     setSaving(true);
     try {
       const input = {
-        fullName: form.fullName.trim(),
-        email: form.email.trim(),
-        contact: form.contact,
         status: form.status,
         joinDate: form.joinDate,
         licenseNo: form.licenseNo.trim(),
@@ -250,10 +239,8 @@ export default function CrewEditDialog({ target, onClose, onSaved }: {
         emergencyName: form.emergencyName.trim(),
         emergencyContact: form.emergencyContact,
       };
-      const saved = target.id === null
-        ? await createCrewMember(target.role, input)
-        : await updateCrewMember(target.role, target.id, input);
-      toast.success(`${isDriver ? 'Driver' : 'Helper'} ${target.id === null ? 'added' : 'updated'}`, { description: `${saved.fullName}'s details were saved.` });
+      const saved = await updateCrewMember(target.role, target.id, input);
+      toast.success(`${isDriver ? 'Driver' : 'Helper'} updated`, { description: `${saved.fullName}'s team details were saved.` });
       // The service reads dates as UTC days; hand back the Manila days that were actually saved.
       onSaved({ ...saved, joinDate: form.joinDate, licenseExpiry: isDriver ? form.licenseExpiry : saved.licenseExpiry });
       onClose();
@@ -295,7 +282,7 @@ export default function CrewEditDialog({ target, onClose, onSaved }: {
   return (
     <Dialog open={!!target} onOpenChange={next => { if (!next) close(); }}>
       <DialogContent hideCloseButton aria-describedby={undefined} className="!flex !flex-col w-[calc(100%-2rem)] max-w-[640px] max-h-[calc(100dvh-2rem)] min-h-0 overflow-hidden rounded-2xl border-0 bg-white p-0 gap-0 shadow-xl">
-        <ModalHeader icon={isNew ? undefined : Pencil} title={`${isNew ? 'Add' : 'Edit'} ${noun}`} subtitle={isNew ? undefined : member?.empId || undefined} closeLabel={`Close ${isNew ? 'add' : 'edit'} ${noun}`} closeDisabled={saving} onClose={close} />
+        <ModalHeader icon={Pencil} title={`Edit ${noun}`} subtitle={member?.fullName || undefined} closeLabel={`Close edit ${noun}`} closeDisabled={saving} onClose={close} />
 
         <form noValidate onSubmit={save} className="flex min-h-0 flex-1 flex-col">
           <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain bg-[#f1f4fa] p-4">
@@ -303,16 +290,12 @@ export default function CrewEditDialog({ target, onClose, onSaved }: {
               <div className="flex min-h-48 flex-col items-center justify-center rounded-2xl border border-slate-200/70 bg-white px-5 text-center text-sm text-slate-600">
                 This {noun} could not be loaded. Close this window and try again.
               </div>
-            ) : !form ? (
+            ) : !form || !member ? (
               <div className="flex min-h-48 items-center justify-center gap-2 rounded-2xl border border-slate-200/70 bg-white text-sm text-slate-600">
                 <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> Loading {noun} details...
               </div>
             ) : <>
-              <FormSection title="Personal details">
-                {text('fullName', 'Full name', 100, 'Enter full name', true)}
-                {text('email', 'Email', 160, 'e.g. juan.delacruz@email.com')}
-                <PhoneField label="Contact number" value={form.contact} error={errorFor('contact')} onChange={value => set('contact', value)} onBlur={() => touch('contact')} />
-              </FormSection>
+              <AccountSection member={member} />
 
               <FormSection title="Work details">
                 <ChoiceField label="Status" value={form.status} options={CREW_STATUS_OPTIONS} onChange={value => set('status', value as CrewStatus)} />
@@ -348,7 +331,7 @@ export default function CrewEditDialog({ target, onClose, onSaved }: {
               disabled={saving || !form}
               className="inline-flex h-10 w-fit items-center whitespace-nowrap rounded-lg bg-[#030848] px-5 text-sm font-semibold text-white hover:bg-[#141a6b] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#e8b800] disabled:opacity-50"
             >
-              {saving ? 'Saving...' : isNew ? `Add ${noun}` : 'Save changes'}
+              {saving ? 'Saving...' : 'Save changes'}
             </button>
           </footer>
         </form>

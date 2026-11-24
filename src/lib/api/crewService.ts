@@ -1,6 +1,12 @@
 import { api } from "../api";
+import { PORTAL_URL } from "../session/session";
 
-/** Drivers and helpers are crew records, not sign-in accounts. They are managed from User Management. */
+/**
+ * Drivers and helpers are the people who hold that role in Auth (spec bms/0012). Each one shows up
+ * here by themselves once they have an account. Name, email and contact number belong to the account
+ * and are edited in the portal; BMS keeps only its own dispatch details (status, join date, license,
+ * emergency contact).
+ */
 export type CrewRole = "DRIVER" | "HELPER";
 export type CrewStatus = "Available" | "On Duty" | "On Leave";
 
@@ -10,7 +16,8 @@ export const LICENSE_TYPES = ["Professional", "Non-Professional"] as const;
 export type CrewMember = {
   id: string;
   role: CrewRole;
-  empId: string;
+  /** The account in Auth. */
+  userId: string;
   fullName: string;
   email: string;
   contact: string;
@@ -24,10 +31,8 @@ export type CrewMember = {
   updatedAt: string | null;
 };
 
+/** The details BMS keeps. Name, email and contact number are not here: they are edited in the portal. */
 export type CrewInput = {
-  fullName: string;
-  email?: string;
-  contact: string;
   status: CrewStatus;
   joinDate: string;
   licenseNo?: string;
@@ -47,19 +52,27 @@ function toStatus(value: unknown): CrewStatus {
   return status === "On Duty" || status === "On Leave" ? status : "Available";
 }
 
-function normalize(raw: RawCrew, role: CrewRole): CrewMember {
+/** Two letters from the name, e.g. "Ramon Dela Cruz" → "RD". BMS stores no initials. */
+export const initialsOf = (name: string) =>
+  name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase()).join("");
+
+/** The person's page in the portal, where Admin edits their name, email and contact number. */
+export const portalAccountUrl = (userId: string) =>
+  `${PORTAL_URL}/admin/people/${encodeURIComponent(userId)}?system=BMS`;
+
+export function normalizeCrew(raw: RawCrew, role: CrewRole, readDay: (value: unknown) => string = day): CrewMember {
   return {
     id: text(raw.id),
     role,
-    empId: text(raw.empId),
+    userId: text(raw.userId),
     fullName: text(raw.fullName ?? raw.name),
     email: text(raw.email),
     contact: text(raw.contact),
     status: toStatus(raw.status ?? raw.crewStatus),
-    joinDate: day(raw.joinDate),
+    joinDate: readDay(raw.joinDate),
     licenseNo: text(raw.licenseNo ?? raw.licenseNumber),
     licenseType: text(raw.licenseType) || "Professional",
-    licenseExpiry: day(raw.licenseExpiry),
+    licenseExpiry: readDay(raw.licenseExpiry),
     emergencyName: text(raw.emergencyName),
     emergencyContact: text(raw.emergencyContact),
     updatedAt: raw.updatedAt ? text(raw.updatedAt) : null,
@@ -71,9 +84,6 @@ const path = (role: CrewRole) => (role === "DRIVER" ? "/bms/config/drivers" : "/
 /** Only the fields each crew type stores are sent; helpers have no license. */
 function payload(role: CrewRole, input: CrewInput) {
   const base = {
-    fullName: input.fullName,
-    email: input.email,
-    contact: input.contact,
     status: input.status,
     joinDate: input.joinDate,
     emergencyName: input.emergencyName,
@@ -84,21 +94,7 @@ function payload(role: CrewRole, input: CrewInput) {
     : base;
 }
 
-export async function getCrew(role: CrewRole): Promise<CrewMember[]> {
-  const { data } = await api.get<RawCrew[]>(path(role));
-  return (data ?? []).map((item) => normalize(item, role));
-}
-
-export async function createCrewMember(role: CrewRole, input: CrewInput): Promise<CrewMember> {
-  const { data } = await api.post<RawCrew>(path(role), payload(role, input));
-  return normalize(data, role);
-}
-
 export async function updateCrewMember(role: CrewRole, id: string, input: CrewInput): Promise<CrewMember> {
   const { data } = await api.patch<RawCrew>(`${path(role)}/${encodeURIComponent(id)}`, payload(role, input));
-  return normalize(data, role);
-}
-
-export async function deleteCrewMember(role: CrewRole, id: string): Promise<void> {
-  await api.delete(`${path(role)}/${encodeURIComponent(id)}`);
+  return normalizeCrew(data, role);
 }

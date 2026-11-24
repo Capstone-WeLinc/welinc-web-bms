@@ -14,7 +14,7 @@ type ActiveTab = 'vehicles' | 'drivers' | 'helpers';
 
 type DisplayVehicleStatus = 'Available' | 'Assigned' | 'Under Maintenance' | 'Under Repair';
 
-type VehicleCrewMember = { id: string; name: string; initials?: string };
+type VehicleCrewMember = { id: string; name: string };
 type VehicleAvailabilityRecord = Vehicle & {
   plateNumber?: string;
   truckTypeId?: string;
@@ -50,7 +50,7 @@ function displayHelperStatus(status?: string | null): CrewStatus {
 const CARD_BATCH = 12;
 
 function normalizeHelper(helper: Helper): Helper {
-  return { ...helper, status: displayHelperStatus(helper.status), initials: helper.initials || getInitials(helper.fullName) };
+  return { ...helper, status: displayHelperStatus(helper.status) };
 }
 
 function mapVehicleStatus(status?: string): VehicleStatus {
@@ -112,9 +112,8 @@ function normalizeDriver(driver: ApiCrew): Driver {
   const fullName = driver.fullName || driver.name || '';
   return {
     id: driver.id || '',
-    empId: driver.empId || '',
+    userId: driver.userId || '',
     fullName,
-    initials: driver.initials || getInitials(fullName),
     contact: driver.contact || '',
     email: driver.email || '',
     address: driver.address || '',
@@ -122,7 +121,6 @@ function normalizeDriver(driver: ApiCrew): Driver {
     licenseType: driver.licenseType || 'Professional',
     licenseExpiry: driver.licenseExpiry || '',
     status: displayHelperStatus(driver.status || driver.crewStatus),
-    totalTrips: driver.totalTrips || 0,
     joinDate: driver.joinDate || '',
     emergencyName: driver.emergencyName || '',
     emergencyContact: driver.emergencyContact || '',
@@ -259,7 +257,6 @@ export default function VehicleAvailability() {
   const filteredDrivers = drivers.filter((driver) => {
     const query = search.toLowerCase();
     const matchesSearch = [
-      driver.empId,
       driver.fullName,
       driver.contact,
       driver.email,
@@ -272,7 +269,7 @@ export default function VehicleAvailability() {
 
   const filteredHelpers = helpers.filter((helper) => {
     const query = search.toLowerCase();
-    const matchesSearch = [helper.empId, helper.fullName, helper.contact]
+    const matchesSearch = [helper.fullName, helper.contact, helper.email ?? '']
       .some(value => value.toLowerCase().includes(query));
     const matchesStatus = statusFilter === 'All' || displayHelperStatus(helper.status) === statusFilter;
     return matchesSearch && matchesStatus;
@@ -559,7 +556,7 @@ function DriverGrid({
   truckFor: (driver: Driver) => VehicleAvailabilityRecord | null;
   onView: (driver: Driver) => void;
 }) {
-  if (!drivers.length) return <EmptyCards message="No drivers found. Try another status or search term. Drivers are added and edited in Team Management." />;
+  if (!drivers.length) return <EmptyCards message="No drivers found. Try another status or search term. Drivers appear once they have a BMS account; edit their details in Team Management." />;
   return (
     <div className={CARD_GRID}>
       {drivers.map(driver => {
@@ -569,10 +566,10 @@ function DriverGrid({
         return (
           <AvailabilityCard
             key={driver.id}
-            badge={driver.initials || <UserCheck size={20} aria-hidden="true" />}
+            badge={getInitials(driver.fullName) || <UserCheck size={20} aria-hidden="true" />}
             title={driver.fullName}
             status={displayHelperStatus(driver.status)}
-            subtitle={[driver.empId, driver.licenseType].filter(Boolean).join(' · ') || 'Not recorded'}
+            subtitle={driver.licenseType ? `Driver · ${driver.licenseType}` : 'Driver'}
             details={[
               ...(driver.leaveUntil ? [{ label: 'On leave until', value: formatDriverModalDate(driver.leaveUntil) }] : []),
               { label: 'Contact', value: notRecorded(contact), muted: !contact },
@@ -597,7 +594,7 @@ function HelperGrid({
   truckFor: (helper: Helper) => VehicleAvailabilityRecord | null;
   onView: (helper: Helper) => void;
 }) {
-  if (!helpers.length) return <EmptyCards message="No helpers found. Try another status or search term. Helpers are added and edited in Team Management." />;
+  if (!helpers.length) return <EmptyCards message="No helpers found. Try another status or search term. Helpers appear once they have a BMS account; edit their details in Team Management." />;
   return (
     <div className={CARD_GRID}>
       {helpers.map(helper => {
@@ -607,10 +604,10 @@ function HelperGrid({
         return (
           <AvailabilityCard
             key={helper.id}
-            badge={helper.initials || <UserCheck size={20} aria-hidden="true" />}
+            badge={getInitials(helper.fullName) || <UserCheck size={20} aria-hidden="true" />}
             title={helper.fullName}
             status={displayHelperStatus(helper.status)}
-            subtitle={helper.empId || 'Not recorded'}
+            subtitle="Helper"
             details={[
               ...(helper.leaveUntil ? [{ label: 'On leave until', value: formatDriverModalDate(helper.leaveUntil) }] : []),
               { label: 'Contact', value: notRecorded(contact), muted: !contact },
@@ -805,7 +802,7 @@ function VehicleModalField({ label, value }: { label: string; value: string | nu
 }
 
 function VehicleCrewRole({ member, role }: { member: VehicleCrewMember; role: string }) {
-  return <div className="flex items-center gap-3"><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-indigo-50 text-sm font-medium text-[#1a1f6e]">{member.initials || getInitials(member.name)}</span><div className="min-w-0"><p className="truncate text-sm font-medium text-slate-900">{member.name}</p><p className="text-sm text-slate-500">{role}</p></div></div>;
+  return <div className="flex items-center gap-3"><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-indigo-50 text-sm font-medium text-[#1a1f6e]">{getInitials(member.name)}</span><div className="min-w-0"><p className="truncate text-sm font-medium text-slate-900">{member.name}</p><p className="text-sm text-slate-500">{role}</p></div></div>;
 }
 
 function formatAssignmentSchedule(assignment: NonNullable<VehicleAvailabilityRecord['currentAssignment']>) {
@@ -816,13 +813,11 @@ function formatAssignmentSchedule(assignment: NonNullable<VehicleAvailabilityRec
 }
 
 /** Shared layout for the Driver and Helper details modals, matching the Vehicle details modal. */
-function CrewDetailsDialog({ open, onClose, title, icon, reference, name, initials, subtitle, status, stats, children }: {
+function CrewDetailsDialog({ open, onClose, title, icon, name, initials, subtitle, status, stats, children }: {
   open: boolean;
   onClose: () => void;
   title: string;
   icon: LucideIcon;
-  /** Shown in gold under the title, e.g. the employee ID. */
-  reference?: string;
   name: string;
   initials: string;
   subtitle: string;
@@ -833,7 +828,7 @@ function CrewDetailsDialog({ open, onClose, title, icon, reference, name, initia
   return (
     <Dialog open={open} onOpenChange={next => { if (!next) onClose(); }}>
       <DialogContent hideCloseButton aria-describedby={undefined} className="!flex !flex-col w-[calc(100%-2rem)] max-w-[640px] max-h-[calc(100dvh-2rem)] min-h-0 overflow-hidden rounded-2xl border-0 bg-white p-0 gap-0 shadow-xl">
-        <ModalHeader icon={icon} title={title} subtitle={reference || undefined} closeLabel={`Close ${title.toLowerCase()}`} />
+        <ModalHeader icon={icon} title={title} closeLabel={`Close ${title.toLowerCase()}`} />
 
         <div className="min-h-0 flex-1 space-y-3 overflow-y-auto bg-[#f1f4fa] p-4">
           <section className="rounded-2xl border border-slate-200/70 bg-white p-4 shadow-sm">
@@ -862,8 +857,9 @@ function CrewDetailsDialog({ open, onClose, title, icon, reference, name, initia
   );
 }
 
-function crewInitials(member: { initials?: string; fullName?: string } | null) {
-  return member?.initials || member?.fullName?.split(/\s+/).filter(Boolean).slice(0, 2).map(part => part[0]).join('').toUpperCase() || '';
+/** Initials come from the name; BMS stores none (spec bms/0012). */
+function crewInitials(member: { fullName?: string } | null) {
+  return member?.fullName ? getInitials(member.fullName) : '';
 }
 
 const recordedDate = (value?: string | null) => {
@@ -880,14 +876,12 @@ function DriverDetails({ driver, onClose }: { driver: Driver | null; onClose: ()
       onClose={onClose}
       title="Driver details"
       icon={Contact}
-      reference={driver?.empId}
       name={driver?.fullName ?? ''}
       initials={crewInitials(driver)}
-      subtitle={[driver?.empId, 'Driver'].filter(Boolean).join(' · ')}
+      subtitle="Driver"
       status={displayHelperStatus(driver?.status)}
       stats={[
         { label: 'License type', value: driver?.licenseType },
-        { label: 'Total trips', value: driver?.totalTrips },
         { label: 'Join date', value: recordedDate(driver?.joinDate) },
       ]}
     >
@@ -958,15 +952,13 @@ function HelperDetails({ helper, onClose }: { helper: Helper | null; onClose: ()
       onClose={onClose}
       title="Helper details"
       icon={UserCheck}
-      reference={helper?.empId}
       name={helper?.fullName ?? ''}
       initials={crewInitials(helper)}
-      subtitle={[helper?.empId, 'Helper'].filter(Boolean).join(' · ')}
+      subtitle="Helper"
       status={displayHelperStatus(helper?.status)}
       stats={[
         { label: 'Contact number', value: phone(helper?.contact) },
         { label: 'Email', value: helper?.email },
-        { label: 'Total trips', value: helper?.totalTrips },
         { label: 'Join date', value: recordedDate(helper?.joinDate) },
       ]}
     >

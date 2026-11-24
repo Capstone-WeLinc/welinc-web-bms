@@ -535,7 +535,7 @@ export default function OperationsScheduling() {
         vehicleModel={(() => { const vehicle = vehicles.find(v => v.id === viewTarget?.vehicleId); return vehicle ? [vehicle.brand, vehicle.model].filter(Boolean).join(' ') : undefined; })()}
         garage={vehicles.find(v => v.id === viewTarget?.vehicleId)?.garage}
         driver={drivers.find(d => d.id === viewTarget?.driverId)?.fullName}
-        helpers={viewTarget?.helperIds?.map(id => helpers.find(helper => helper.id === id || helper.empId === id)?.fullName).filter(Boolean).join(', ')}
+        helpers={viewTarget?.helperIds?.map(id => helpers.find(helper => helper.id === id)?.fullName).filter(Boolean).join(', ')}
       />
     </div>
   );
