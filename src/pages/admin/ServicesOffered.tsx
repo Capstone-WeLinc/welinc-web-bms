@@ -6,16 +6,21 @@ import {
   ArrowLeftRight,
   BriefcaseBusiness,
   Building2,
+  Clock,
+  Eye,
   Home,
   Layers3,
   Package,
   Pencil,
   Plus,
+  X,
   Search,
   Trash2,
   type LucideIcon,
 } from "lucide-react";
 import DeleteConfirmModal from "../../components/shared/DeleteConfirmModal";
+import { DetailCard, ServiceDetailCards } from "../../components/services/ServiceDetails";
+import { detailLists } from "../../components/services/detailLists";
 import { toast } from "sonner";
 import { api } from "../../lib/api";
 
@@ -28,9 +33,21 @@ type Item = {
   price?: number;
   isActive?: boolean;
   status?: string | null;
+  /** Additional services only (spec bms/0013). */
+  cashCharge?: number;
+  inclusions?: string[];
+  paymentOptions?: string[];
+  exclusions?: string[];
 };
-const blank = { name: "", description: "", duration: "", price: "" };
-type RequiredField = "name" | "description" | "duration" | "price";
+/** Each detail list is edited as rows, one item per row; a new list starts with one empty row. */
+const blank = { name: "", description: "", duration: "", price: "", cashCharge: "", inclusions: [""], paymentOptions: [""], exclusions: [""] };
+/** The detail lists are edited as text, one item per line. */
+const MAX_ITEMS = 20;
+const MAX_ITEM_LENGTH = 200;
+const toRows = (list?: string[]) => (list?.length ? [...list] : [""]);
+const fromRows = (rows: string[]) => rows.map((row) => row.trim()).filter(Boolean);
+type DetailListKey = "inclusions" | "paymentOptions" | "exclusions";
+type RequiredField = "name" | "description" | "duration" | "price" | "cashCharge" | DetailListKey;
 const controlClass = "mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3 text-base text-slate-900 outline-none transition focus:border-[#1a1f6e] focus:ring-2 focus:ring-[#1a1f6e]/20 placeholder:text-slate-400";
 const invalidControlClass = "!border-red-500 focus:!border-red-500 focus:!ring-red-500/10";
 const peso = (value: number) =>
@@ -65,6 +82,7 @@ export default function ServicesOffered() {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Item | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Item | null>(null);
+  const [viewTarget, setViewTarget] = useState<Item | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [form, setForm] = useState(blank);
   const [touched, setTouched] = useState<Set<RequiredField>>(new Set());
@@ -108,6 +126,10 @@ export default function ServicesOffered() {
             description: item.description ?? "",
             duration: item.duration ?? "",
             price: String(item.price ?? ""),
+            cashCharge: String(item.cashCharge ?? 0),
+            inclusions: toRows(item.inclusions),
+            paymentOptions: toRows(item.paymentOptions),
+            exclusions: toRows(item.exclusions),
           }
         : blank,
     );
@@ -127,10 +149,25 @@ export default function ServicesOffered() {
         : undefined
     : undefined;
   const priceInvalid = Boolean(priceError);
+  // Required for additional services: 0 when paying in cash adds nothing.
+  const cashChargeValue = Number(form.cashCharge);
+  const cashChargeProblem = form.cashCharge.trim() === ""
+    ? "This field is required."
+    : !Number.isFinite(cashChargeValue) || cashChargeValue < 0 ? "Enter a valid amount." : undefined;
+  const cashChargeError = touched.has("cashCharge") ? cashChargeProblem : undefined;
+  /** The same limits as the backend: at least one line, at most 20, each 200 characters or fewer (spec bms/0013). */
+  const listProblem = (key: DetailListKey) => {
+    const items = fromRows(form[key]);
+    if (items.length === 0) return "Add at least one item.";
+    if (items.length > MAX_ITEMS) return `Use ${MAX_ITEMS} items or fewer.`;
+    if (items.some((item) => item.length > MAX_ITEM_LENGTH)) return `Keep each item to ${MAX_ITEM_LENGTH} characters or fewer.`;
+    return undefined;
+  };
+  const listError = (key: DetailListKey) => (touched.has(key) ? listProblem(key) : undefined);
   const save = async () => {
     const requiredFields: RequiredField[] =
       tab === "additional"
-        ? ["name", "description", "duration", "price"]
+        ? ["name", "description", "duration", "price", "cashCharge", "inclusions", "paymentOptions", "exclusions"]
         : tab === "material"
           ? ["name", "price"]
           : ["name", "description"];
@@ -140,13 +177,20 @@ export default function ServicesOffered() {
     if (tab === "additional" && !form.duration.trim()) return;
     const price = Number(form.price);
     if (tab !== "primary" && (form.price.trim() === "" || !Number.isFinite(price) || price < 0)) return;
+    if (tab === "additional" && (cashChargeProblem || (["inclusions", "paymentOptions", "exclusions"] as const).some((key) => listProblem(key)))) return;
     setSaving(true);
     try {
       const payload = {
         name: form.name.trim(),
         description: form.description.trim(),
         ...(tab !== "primary" && { price }),
-        ...(tab === "additional" && { duration: form.duration.trim() }),
+        ...(tab === "additional" && {
+          duration: form.duration.trim(),
+          cashCharge: cashChargeValue,
+          inclusions: fromRows(form.inclusions),
+          paymentOptions: fromRows(form.paymentOptions),
+          exclusions: fromRows(form.exclusions),
+        }),
       };
       if (editing)
         await api.patch(`/bms/config/${endpoint}/${editing.id}`, payload);
@@ -286,6 +330,7 @@ export default function ServicesOffered() {
                       {tab === "material" && <p className="mt-2 text-sm font-medium text-[#1a1f6e]">{peso(item.price ?? 0)}</p>}
                     </div>
                     <div className="flex shrink-0 items-center gap-1">
+                      {tab === "additional" && <button type="button" aria-label={`View details of ${item.name}`} title="View details" onClick={() => setViewTarget(item)} className="inline-flex h-[34px] w-[34px] items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-100 hover:text-[#1a1f6e] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1a1f6e]/20"><Eye size={16} aria-hidden="true" /></button>}
                       <button type="button" aria-label={`Edit ${item.name}`} onClick={() => showForm(item)} className="inline-flex h-[34px] w-[34px] items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-100 hover:text-[#1a1f6e] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1a1f6e]/20"><Pencil size={16} aria-hidden="true" /></button>
                       <button type="button" aria-label={`Delete ${item.name}`} onClick={() => setDeleteTarget(item)} className="inline-flex h-[34px] w-[34px] items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-200"><Trash2 size={16} aria-hidden="true" /></button>
                     </div>
@@ -377,6 +422,45 @@ export default function ServicesOffered() {
                       </div>
                     </Field>
                   </div>
+                  {tab === "additional" && (
+                    <Field label="Cash payment charge" required error={cashChargeError}>
+                      <div className={`mt-1.5 flex h-11 overflow-hidden rounded-lg border bg-white transition focus-within:ring-2 ${cashChargeError ? "!border-red-500 focus-within:!border-red-500 focus-within:!ring-red-500/10" : "border-slate-300 focus-within:border-[#1a1f6e] focus-within:ring-[#1a1f6e]/20"}`}>
+                        <span aria-hidden="true" className="flex shrink-0 items-center border-r border-slate-200 px-3 text-base text-slate-900">₱</span>
+                        <input
+                          className="min-w-0 flex-1 border-0 bg-transparent px-3 text-base tabular-nums text-slate-900 outline-none placeholder:text-slate-400"
+                          type="number"
+                          aria-invalid={Boolean(cashChargeError)}
+                          min="0"
+                          step="0.01"
+                          placeholder="0.00"
+                          required
+                          value={form.cashCharge}
+                          onChange={(e) => setForm({ ...form, cashCharge: e.target.value })}
+                          onBlur={() => touch("cashCharge")}
+                        />
+                      </div>
+                    </Field>
+                  )}
+                </FormSection>
+              )}
+
+              {tab === "additional" && (
+                <FormSection title="Service terms">
+                  {([
+                    ["inclusions", "Inclusions", "e.g. 2 staff members"],
+                    ["paymentOptions", "Payment options", "e.g. GCash (no additional charge)"],
+                    ["exclusions", "Exclusions", "e.g. Condominium and subdivision entry and exit fees"],
+                  ] as const).map(([key, label, placeholder]) => (
+                    <ItemListField
+                      key={key}
+                      label={label}
+                      placeholder={placeholder}
+                      items={form[key]}
+                      error={listError(key)}
+                      onChange={(items) => setForm({ ...form, [key]: items })}
+                      onBlur={() => touch(key)}
+                    />
+                  ))}
                 </FormSection>
               )}
             </div>
@@ -402,6 +486,32 @@ export default function ServicesOffered() {
         </Modal>
         );
       })()}
+      {viewTarget && (
+        <Modal onClose={() => setViewTarget(null)} icon={Eye} title={viewTarget.name}>
+          <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain bg-[#f1f4fa] p-4">
+            <DetailCard title="Overview">
+              <dl className="grid grid-cols-2 gap-x-5 gap-y-4">
+                <div>
+                  <dt className="text-xs text-slate-500">Duration</dt>
+                  <dd className="mt-1"><span className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-slate-100 px-2.5 py-1 text-xs text-slate-600"><Clock size={12} aria-hidden="true" />{viewTarget.duration || "Duration not set"}</span></dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-slate-500">Price</dt>
+                  <dd className="mt-1 text-base font-semibold text-[#1a1f6e]">{peso(viewTarget.price ?? 0)}</dd>
+                </div>
+                <div className="col-span-2">
+                  <dt className="text-xs text-slate-500">Description</dt>
+                  <dd className="mt-1 text-sm text-slate-700">{viewTarget.description || "No description provided."}</dd>
+                </div>
+              </dl>
+            </DetailCard>
+            <ServiceDetailCards details={detailLists(viewTarget)} />
+          </div>
+          <footer className="flex shrink-0 justify-end border-t border-slate-200 bg-white px-4 py-3">
+            <button type="button" onClick={() => setViewTarget(null)} className="inline-flex h-10 w-fit items-center justify-center whitespace-nowrap rounded-lg border border-slate-300 bg-white px-5 text-sm font-medium text-slate-700 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1a1f6e]/30">Close</button>
+          </footer>
+        </Modal>
+      )}
       <DeleteConfirmModal
         open={!!deleteTarget}
         title={`Delete ${tab === "primary" ? "Service" : tab === "additional" ? "Additional Service" : "Protective Material"}`}
@@ -471,6 +581,66 @@ function FormSection({ title, children }: { title: string; children: React.React
     </section>
   );
 }
+/**
+ * One detail list as rows: an input per item with a remove button, and "Add item" below
+ * (spec bms/0013). The last row is cleared rather than removed, so there's always one to type in.
+ */
+function ItemListField({ label, placeholder, items, error, onChange, onBlur }: {
+  label: string;
+  placeholder: string;
+  items: string[];
+  error?: string;
+  onChange: (items: string[]) => void;
+  onBlur: () => void;
+}) {
+  const full = items.length >= MAX_ITEMS;
+  const update = (index: number, value: string) => onChange(items.map((item, at) => (at === index ? value : item)));
+  const remove = (index: number) => { onChange(items.length > 1 ? items.filter((_, at) => at !== index) : [""]); onBlur(); };
+  return (
+    <div role="group" aria-label={label}>
+      <span className="text-sm font-medium text-slate-700">{label}<span className="ml-1 text-red-600">*</span></span>
+      <ul className="mt-1.5 space-y-2">
+        {items.map((item, index) => (
+          <li key={index} className="flex items-center gap-2">
+            <input
+              className={`${controlClass} !mt-0 h-11 ${error && !item.trim() ? invalidControlClass : ""}`}
+              aria-label={`${label} item ${index + 1}`}
+              aria-invalid={Boolean(error)}
+              maxLength={MAX_ITEM_LENGTH}
+              value={item}
+              placeholder={index === 0 ? placeholder : "Enter an item"}
+              onChange={(e) => update(index, e.target.value)}
+              onBlur={onBlur}
+              onKeyDown={(e) => {
+                // Enter adds a row under this one instead of submitting the form.
+                if (e.key === "Enter") { e.preventDefault(); if (!full) onChange([...items.slice(0, index + 1), "", ...items.slice(index + 1)]); }
+              }}
+            />
+            <button
+              type="button"
+              aria-label={`Remove ${label.toLowerCase()} item ${index + 1}`}
+              onClick={() => remove(index)}
+              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-200"
+            >
+              <X size={16} aria-hidden="true" />
+            </button>
+          </li>
+        ))}
+      </ul>
+      <button
+        type="button"
+        disabled={full}
+        onClick={() => onChange([...items, ""])}
+        className="mt-2 inline-flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-sm font-semibold text-[#1a1f6e] transition-colors hover:bg-[#eef0fa] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1a1f6e]/30 disabled:cursor-not-allowed disabled:opacity-50"
+      >
+        <Plus size={15} aria-hidden="true" />
+        {full ? `${MAX_ITEMS} items at most` : "Add item"}
+      </button>
+      {error && <span className="mt-1 block text-sm font-medium text-red-600">{error}</span>}
+    </div>
+  );
+}
+
 function Field({
   label,
   required = false,

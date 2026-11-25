@@ -17,6 +17,8 @@ import { formatPhoneLocal } from '../../lib/phone';
 import { ReviewCard as RC, ReviewRow as Rw } from './ReviewCard';
 import { BookingFormField as StepTwoField, BookingFormSection as StepTwoSection } from './BookingFormFields';
 import { COD_SURCHARGE, CostSummary, INSURANCE_PRICE, PROTECTIVE_MATERIALS, type CostLine } from './CostSummary';
+import { ServiceDetailsSections } from '../services/ServiceDetails';
+import { COD_FEE_LABEL, cashChargeLabel, detailLists, type ServiceDetailLists } from '../services/detailLists';
 import { stepThreeTextarea, stepTwoControl, stepTwoInvalid } from './bookingFormStyles';
 import { filterTruckRates, hasPreferredTruckSelection, preferredTruckCharge, truckContextChanged, truckRateView, type PreferredTruckRate } from './truckRates';
 
@@ -42,21 +44,23 @@ const TRUCK_TYPES = [
 const ITEM_DETAILS_MAX_LENGTH = 500;
 const SPECIAL_INSTRUCTIONS_MAX_LENGTH = 300;
 
-interface AdditionalService {
-  id: string; name: string; duration: string; price: number;
-  description: string; inclusions: string[]; paymentOptions: string[];
-  exclusions: string[]; cashSurcharge?: number;
+/** An additional service with its View details lists, read from Services Offered (spec bms/0013). */
+interface AdditionalService extends ServiceDetailLists {
+  id: string; name: string; duration: string; price: number; description: string;
+  /** Added when the booking is paid in cash, on top of the cash-on-delivery surcharge. */
+  cashCharge: number;
 }
 
+// Used only when the Services Offered catalog can't be read; keep in step with its seed.
 const ADDITIONAL_SERVICES: AdditionalService[] = [
-  { id: 'basic-packing', name: 'Basic Packing Service', duration: '6hr', price: 3450, description: 'Basic packing assistance for moving preparation.', inclusions: ['2 Manpower', '1 Cling Wrap', '1 Packaging Tape', 'Used Carton'], paymentOptions: ['Cash (with ₱300 charge)', 'GCash', 'Bank Transfer (No Charge)'], exclusions: ['Condo and Subdivision entry and exit fees'], cashSurcharge: 300 },
-  { id: 'standard-packing', name: 'Standard Packing Service', duration: '6hr', price: 5950, description: 'Standard-level packing assistance with additional manpower.', inclusions: ['4 Manpower', '1 Cling Wrap', '1 Packaging Tape', 'Used Carton'], paymentOptions: ['Cash (with ₱300 charge)', 'GCash', 'Bank Transfer (No Charge)'], exclusions: ['Condo and Subdivision entry and exit fees'], cashSurcharge: 300 },
-  { id: 'premium-packing', name: 'Premium Packing Service', duration: '6hr', price: 7950, description: 'Premium packing service with additional packaging materials.', inclusions: ['4 Manpower', '1 Cling Wrap', '1 Packaging Tape', '10 pcs Box', '1 Roll Bubble Wrap', 'Used Carton'], paymentOptions: ['Cash (with ₱300 charge)', 'GCash', 'Bank Transfer (No Charge)'], exclusions: ['Condo and Subdivision entry and exit fees'], cashSurcharge: 300 },
-  { id: 'ocular-ncr', name: 'Ocular / Site Inspection (NCR)', duration: '2hr', price: 300, description: 'On-site inspection service within NCR.', inclusions: ['1 Motorized Personnel'], paymentOptions: ['Cash', 'GCash', 'Credit/Debit Card', 'Bank Transfer'], exclusions: ['Condo and Subdivision entry and exit fees'] },
-  { id: 'ocular-or', name: 'Ocular / Site Inspection (Outside NCR)', duration: '2hr', price: 600, description: 'Provincial or outside NCR ocular/site inspection.', inclusions: ['1 Motorized Personnel'], paymentOptions: ['Cash', 'GCash', 'Credit/Debit Card', 'Bank Transfer'], exclusions: ['Condo and Subdivision entry and exit fees'] },
-  { id: 'custom-packing', name: 'Custom Packing Service', duration: '6hr', price: 2720, description: 'Customizable packing service with limited packaging materials.', inclusions: ['1 Manpower', '1 Cling Wrap', '1 Packaging Tape', '1 Bubble Wrap', '6 Boxes'], paymentOptions: ['Cash (with ₱300 charge)', 'GCash', 'Bank Transfer (No Charge)'], exclusions: ['Condo and Subdivision entry and exit fees'], cashSurcharge: 300 },
-  { id: 'motorized-helper', name: 'Motorized Helper', duration: '6hr', price: 990, description: 'Motorized helper assistance for small moving tasks.', inclusions: ['1 Motorized Manpower', 'Fuel'], paymentOptions: ['Cash upon delivery', 'GCash', 'Bank Transfer'], exclusions: ['Condo and Subdivision entry and exit fees'] },
-  { id: 'motorized-helper-premium', name: 'Motorized Helper Premium', duration: '6hr', price: 1490, description: 'Premium motorized helper assistance.', inclusions: ['1 Motorized Manpower', 'Fuel'], paymentOptions: ['Cash upon delivery', 'GCash', 'Bank Transfer'], exclusions: ['Condo and Subdivision entry and exit fees'] },
+  { id: 'basic-packing', name: 'Basic Packing Service', duration: '6hr', price: 3450, description: 'Basic packing assistance for moving preparation.', inclusions: ['2 staff members', '1 cling wrap', '1 packaging tape', 'Used cartons', '6 hours of packing service'], paymentOptions: ['Cash (with an additional PHP 500 charge)', 'GCash (no additional charge)', 'Bank transfer (no additional charge)'], exclusions: ['Condominium and subdivision entry and exit fees'], cashCharge: 500 },
+  { id: 'standard-packing', name: 'Standard Packing Service', duration: '6hr', price: 5950, description: 'Standard-level packing assistance with additional manpower.', inclusions: ['4 staff members', '1 cling wrap', '1 packaging tape', 'Used cartons', '6 hours of packing service'], paymentOptions: ['Cash (with an additional PHP 500 charge)', 'GCash (no additional charge)', 'Bank transfer (no additional charge)'], exclusions: ['Condominium and subdivision entry and exit fees'], cashCharge: 500 },
+  { id: 'premium-packing', name: 'Premium Packing Service', duration: '6hr', price: 7950, description: 'Premium packing service with additional packaging materials.', inclusions: ['4 staff members', '1 cling wrap', '1 packaging tape', '10 boxes', '1 roll of bubble wrap', 'Used cartons', '6 hours of packing service'], paymentOptions: ['Cash (with an additional PHP 500 charge)', 'GCash (no additional charge)', 'Bank transfer (no additional charge)'], exclusions: ['Condominium and subdivision entry and exit fees'], cashCharge: 500 },
+  { id: 'ocular-ncr', name: 'Ocular / Site Inspection (NCR)', duration: '2hr', price: 300, description: 'On-site inspection service within NCR.', inclusions: ['1 motorized staff member', '2 hours of ocular/site inspection'], paymentOptions: ['Cash (with an additional PHP 500 charge)', 'GCash (no additional charge)', 'Bank transfer (no additional charge)'], exclusions: ['Condominium and subdivision entry and exit fees'], cashCharge: 500 },
+  { id: 'ocular-or', name: 'Ocular / Site Inspection (Outside NCR)', duration: '2hr', price: 600, description: 'Provincial or outside NCR ocular/site inspection.', inclusions: ['1 motorized staff member', '2 hours of ocular/site inspection'], paymentOptions: ['Cash', 'GCash', 'Credit/debit card', 'Bank transfer'], exclusions: ['Condominium and subdivision entry and exit fees'], cashCharge: 0 },
+  { id: 'custom-packing', name: 'Custom Packing Service', duration: '6hr', price: 2720, description: 'Customizable packing service with limited packaging materials.', inclusions: ['1 staff member', '1 cling wrap', '1 packaging tape', '1 bubble wrap', '6 boxes', 'Up to 6 hours of packing service'], paymentOptions: ['Cash (with an additional PHP 500 charge)', 'GCash (no additional charge)', 'Bank transfer (no additional charge)'], exclusions: ['Condominium and subdivision entry and exit fees'], cashCharge: 500 },
+  { id: 'motorized-helper', name: 'Motorized Helper', duration: '6hr', price: 990, description: 'Motorized helper assistance for small moving tasks.', inclusions: ['1 motorized staff member', 'Fuel', 'Up to 6 hours of service', 'An additional PHP 100 per succeeding hour'], paymentOptions: ['Cash upon delivery', 'GCash', 'Bank transfer'], exclusions: ['Condominium and subdivision entry and exit fees'], cashCharge: 0 },
+  { id: 'motorized-helper-premium', name: 'Motorized Helper Premium', duration: '6hr', price: 1490, description: 'Premium motorized helper assistance.', inclusions: ['1 motorized staff member', 'Fuel', 'Up to 6 hours of service', 'An additional PHP 100 per succeeding hour'], paymentOptions: ['Cash upon delivery', 'GCash', 'Bank transfer'], exclusions: ['Condominium and subdivision entry and exit fees'], cashCharge: 0 },
 ];
 
 // ─── Draft ────────────────────────────────────────────────────────────────────
@@ -148,23 +152,25 @@ function isDateInPast(dateStr: string) {
 export default function NewBookingWizard({ open, onClose, onConfirm }: Props) {
   const [step, setStep] = useState(1);
   const [d, setD] = useState<Draft>(EMPTY);
-  const [expanded, setExpanded] = useState<string | null>(null);
+  // Each additional service's details open and close on their own, so several can be read side by side.
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [policyOpen, setPolicyOpen] = useState(false);
   const [touched, setTouched] = useState<Set<keyof Draft>>(new Set());
   const [serviceCatalog, setServiceCatalog] = useState<AdditionalService[]>(ADDITIONAL_SERVICES);
   const [materialCatalog, setMaterialCatalog] = useState(PROTECTIVE_MATERIALS);
   const [primaryServiceCatalog, setPrimaryServiceCatalog] = useState(SERVICES);
 
-  useEffect(() => { if (open) { setStep(1); setD(EMPTY); setExpanded(null); setTouched(new Set()); } }, [open]);
+  useEffect(() => { if (open) { setStep(1); setD(EMPTY); setExpanded(new Set()); setTouched(new Set()); } }, [open]);
   useEffect(() => {
     if (!open) return;
     Promise.all([
       api.get<Array<{ id: string; name: string; description?: string }>>('/bms/config/booking-services'),
-      api.get<Array<{ id: string; name: string; description?: string; duration?: string; price: number }>>('/bms/config/services-offered'),
+      api.get<Array<{ id: string; name: string; description?: string; duration?: string; price: number; cashCharge?: number; inclusions?: string[]; paymentOptions?: string[]; exclusions?: string[] }>>('/bms/config/services-offered'),
       api.get<Array<{ name: string; price: number }>>('/bms/config/protective-materials'),
     ]).then(([primaryServices, services, materials]) => {
       if (primaryServices.data?.length) setPrimaryServiceCatalog(primaryServices.data.map(item => ({ id: item.name, label: item.name, sub: item.description || '', icon: <Package size={22} /> })));
-      if (services.data?.length) setServiceCatalog(services.data.map(item => ({ ...item, duration: item.duration || '-', description: item.description || '', inclusions: [], paymentOptions: [], exclusions: [] })));
+      // The View details lists come from the catalog too; they used to be dropped here, so View details showed nothing.
+      if (services.data?.length) setServiceCatalog(services.data.map(item => ({ ...item, duration: item.duration || '-', description: item.description || '', cashCharge: Number(item.cashCharge) || 0, ...detailLists(item) })));
       if (materials.data?.length) setMaterialCatalog(materials.data.map(item => ({ name: item.name, price: Number(item.price) })));
     }).catch(() => {});
   }, [open]);
@@ -238,14 +244,20 @@ export default function NewBookingWizard({ open, onClose, onConfirm }: Props) {
   const materialsTotal = selectedMaterials.reduce((sum, material) => sum + material.price, 0);
   const insTotal = d.hasInsurance ? INSURANCE_PRICE : 0;
   const cashSurcharge = d.paymentMethod === 'COD' ? COD_SURCHARGE : 0;
+  // Paying in cash also adds each selected additional service's own cash charge (spec bms/0013).
+  const serviceCashCharges = d.paymentMethod === 'COD'
+    ? selectedSvcs.filter(service => service.cashCharge > 0).map(service => ({ name: service.name, amount: service.cashCharge }))
+    : [];
+  const serviceCashTotal = serviceCashCharges.reduce((sum, charge) => sum + charge.amount, 0);
   const truckTotal = preferredTruckCharge(d.selectedTruck, isU2U);
-  const grandTotal = truckTotal + svcTotal + materialsTotal + insTotal + cashSurcharge;
+  const grandTotal = truckTotal + svcTotal + materialsTotal + insTotal + cashSurcharge + serviceCashTotal;
   const costLines: CostLine[] = [
     ...(truckTotal > 0 ? [{ label: d.selectedTruck?.name ?? 'Preferred truck', value: fmt(truckTotal) }] : []),
     ...selectedSvcs.map(service => ({ label: service.name, value: fmt(service.price) })),
     ...selectedMaterials.map(material => ({ label: material.name, value: fmt(material.price) })),
     ...(insTotal > 0 ? [{ label: 'Goods in Transit Insurance', value: fmt(insTotal) }] : []),
-    ...(cashSurcharge > 0 ? [{ label: 'Cash Surcharge', value: `+${fmt(cashSurcharge)}` }] : []),
+    ...serviceCashCharges.map(charge => ({ label: cashChargeLabel(charge.name), value: `+${fmt(charge.amount)}` })),
+    ...(cashSurcharge > 0 ? [{ label: COD_FEE_LABEL, value: `+${fmt(cashSurcharge)}` }] : []),
   ];
 
   function confirm() {
@@ -270,7 +282,10 @@ export default function NewBookingWizard({ open, onClose, onConfirm }: Props) {
       estimatedItems: parseInt(d.estimatedItems) || 0, itemDetails: d.itemDetails,
       servicesAvailed: specials,
       protectiveMaterials: d.selectedProtectiveMaterials,
-      additionalServicesAvailed: selectedSvcs.map(sv => ({ name: sv.name, price: fmt(sv.price) })),
+      additionalServicesAvailed: selectedSvcs.map(sv => {
+        const cashCharge = serviceCashCharges.find(charge => charge.name === sv.name)?.amount;
+        return { name: sv.name, price: fmt(sv.price), ...(cashCharge ? { cashCharge } : {}) };
+      }),
       hasInsurance: d.hasInsurance, paymentMethod: d.paymentMethod,
       notes: d.specialInstructions, specialInstructions: d.specialInstructions, paymentStatus: 'Pending',
       permitRequired: d.permitRequired,
@@ -327,7 +342,7 @@ export default function NewBookingWizard({ open, onClose, onConfirm }: Props) {
           {step === 2 && <S2 d={d} set={set} pArea={pArea} dArea={dArea} pBrgy={pBrgy} dBrgy={dBrgy} setCat={setCat} isU2U={isU2U} touched={touched} touch={touch} />}
           {step === 3 && <S3 d={d} set={set} expanded={expanded} setExpanded={setExpanded} toggleSvc={toggleSvc} toggleProtectiveMaterial={toggleProtectiveMaterial} serviceCatalog={serviceCatalog} materialCatalog={materialCatalog} touched={touched} touch={touch} />}
           {step === 4 && <S4 d={d} set={set} />}
-          {step === 5 && <S5 d={d} set={set} policyOpen={policyOpen} setPolicyOpen={setPolicyOpen} grandTotal={grandTotal} costLines={costLines} touched={touched} touch={touch} />}
+          {step === 5 && <S5 d={d} set={set} policyOpen={policyOpen} setPolicyOpen={setPolicyOpen} grandTotal={grandTotal} costLines={costLines} touched={touched} touch={touch} serviceCashCharges={serviceCashCharges} />}
           {step === 6 && <S6 d={d} catDef={catDef} costLines={costLines} grandTotal={grandTotal} truckTotal={truckTotal} isU2U={isU2U} />}
         </div>
 
@@ -768,7 +783,7 @@ function StepThreeField({ id, label, required = false, children }: { id: string;
 
 function S3({ d, set, expanded, setExpanded, toggleSvc, toggleProtectiveMaterial, serviceCatalog, materialCatalog, touched, touch }: {
   d: Draft; set: Fn;
-  expanded: string | null; setExpanded: (id: string | null) => void;
+  expanded: Set<string>; setExpanded: (ids: Set<string>) => void;
   toggleSvc: (id: string) => void;
   toggleProtectiveMaterial: (name: string) => void;
   serviceCatalog: AdditionalService[]; materialCatalog: typeof PROTECTIVE_MATERIALS;
@@ -827,10 +842,10 @@ function S3({ d, set, expanded, setExpanded, toggleSvc, toggleProtectiveMaterial
     </StepThreeSection>
 
     <StepThreeSection icon={<CreditCard size={16} />} title="Additional services">
-      <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+      <div className="grid grid-cols-1 items-start gap-2.5 sm:grid-cols-2">
             {sortedServices.map(svc => {
               const selected = d.selectedAdditionalServices.includes(svc.id);
-              const expandedDetails = expanded === svc.id;
+              const expandedDetails = expanded.has(svc.id);
               const duration = svc.duration.replace(/(\d+)\s*hr\b/i, '$1 hr');
               return <div key={svc.id} className={`rounded-xl border transition-colors ${selected ? 'border-[1.5px] border-[#1a1f6e] bg-[#f5f6fd]' : 'border-slate-300 bg-white'}`}>
                 <label className="relative flex cursor-pointer items-start gap-2.5 p-3">
@@ -843,14 +858,10 @@ function S3({ d, set, expanded, setExpanded, toggleSvc, toggleProtectiveMaterial
                   </span>
                 </label>
                 <div className="px-3 pb-3 pl-10">
-                  <button type="button" aria-expanded={expandedDetails} onClick={() => setExpanded(expandedDetails ? null : svc.id)} className="inline-flex items-center gap-1 text-[12.5px] font-medium text-[#1a1f6e] hover:underline">
+                  <button type="button" aria-expanded={expandedDetails} onClick={() => { const next = new Set(expanded); if (expandedDetails) next.delete(svc.id); else next.add(svc.id); setExpanded(next); }} className="inline-flex items-center gap-1 text-[12.5px] font-medium text-[#1a1f6e] hover:underline">
                     {expandedDetails ? 'Hide details' : 'View details'} <ChevronRight size={14} className={`transition-transform ${expandedDetails ? 'rotate-90' : ''}`} />
                   </button>
-                  {expandedDetails && <div className="mt-2 space-y-2 text-xs text-slate-600">
-                    {svc.inclusions.length > 0 && <div><p className="font-medium">Inclusions</p><ul className="mt-1 list-disc pl-4">{svc.inclusions.map(item => <li key={item}>{item}</li>)}</ul></div>}
-                    {svc.paymentOptions.length > 0 && <div><p className="font-medium">Payment options</p><ul className="mt-1 list-disc pl-4">{svc.paymentOptions.map(option => <li key={option}>{option}</li>)}</ul></div>}
-                    {svc.exclusions.length > 0 && <div><p className="font-medium">Exclusions</p><ul className="mt-1 list-disc pl-4">{svc.exclusions.map(item => <li key={item}>{item}</li>)}</ul></div>}
-                  </div>}
+                  {expandedDetails && <div className="mt-2"><ServiceDetailsSections details={svc} compact /></div>}
                 </div>
               </div>;
             })}
@@ -905,10 +916,12 @@ function S4({ d, set }: { d: Draft; set: Fn }) {
 // ═══════════════════════════════════════════════════════════════════════
 // STEP 5 — PAYMENT
 // ═══════════════════════════════════════════════════════════════════════
-function S5({ d, set, policyOpen, setPolicyOpen, grandTotal, costLines, touched, touch }: {
+function S5({ d, set, policyOpen, setPolicyOpen, grandTotal, costLines, touched, touch, serviceCashCharges }: {
   d: Draft; set: Fn; policyOpen: boolean; setPolicyOpen: (v: boolean) => void;
   grandTotal: number; costLines: CostLine[];
   touched: Set<keyof Draft>; touch: (key: keyof Draft) => void;
+  /** Each selected additional service's own cash charge, when paying in cash. */
+  serviceCashCharges: Array<{ name: string; amount: number }>;
 }) {
   const paymentMethodInvalid = touched.has('paymentMethod') && !d.paymentMethod;
   const termsInvalid = touched.has('agreeToTerms') && !d.agreeToTerms;
@@ -929,7 +942,7 @@ function S5({ d, set, policyOpen, setPolicyOpen, grandTotal, costLines, touched,
             { id: 'GCash', label: 'GCash', icon: <Smartphone size={22} />, sub: 'Digital wallet' },
             { id: 'Credit Card', label: 'Credit Card', icon: <CreditCard size={22} />, sub: 'Visa / Mastercard' },
             { id: 'Xendit', label: 'Xendit', icon: <CreditCard size={22} />, sub: 'Wallets, cards, direct debit, retail & PayLater' },
-            { id: 'COD', label: 'Cash on Delivery', icon: <Truck size={22} />, sub: 'Pay on pickup (+₱300)' },
+            { id: 'COD', label: 'Cash on Delivery', icon: <Truck size={22} />, sub: `Pay on pickup (+${fmt(COD_SURCHARGE)})` },
           ]).map(pm => (
             <button type="button" role="radio" aria-checked={d.paymentMethod === pm.id} key={pm.id} onClick={() => { set('paymentMethod', pm.id); touch('paymentMethod'); }} onBlur={() => touch('paymentMethod')}
               className={`relative flex flex-col items-center gap-2 rounded-xl border px-2 py-4 cursor-pointer transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1a1f6e] focus-visible:ring-offset-2
@@ -946,7 +959,11 @@ function S5({ d, set, policyOpen, setPolicyOpen, grandTotal, costLines, touched,
         {paymentMethodInvalid && <p className="mt-2 text-xs text-red-600">This field is required.</p>}
         {d.paymentMethod === 'COD' && (
           <p className="mt-2 text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1.5">
-            <AlertCircle size={12} />A ₱300 cash-on-delivery surcharge has been added to your total.
+            <AlertCircle size={12} className="shrink-0" />
+            <span>
+              A {fmt(COD_SURCHARGE)} cash-on-delivery surcharge has been added to your total.
+              {serviceCashCharges.length > 0 && <> Paying in cash also adds {serviceCashCharges.map(charge => `${fmt(charge.amount)} for ${charge.name}`).join(', ')}.</>}
+            </span>
           </p>
         )}
       </Sec>
