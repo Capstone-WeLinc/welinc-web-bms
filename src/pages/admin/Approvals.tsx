@@ -4,13 +4,14 @@ import { toast } from 'sonner';
 import { api } from '../../lib/api';
 import PageHeader from '../../components/pageheader/Pageheader';
 import TablePagination from '../../components/ui/TablePagination';
-import { AlarmClock, CheckCheck, ClipboardCheck, Clock3, Coins, FileCheck2, History, Search, ShieldAlert, UserRoundMinus, X } from 'lucide-react';
+import { AlarmClock, CheckCheck, ClipboardCheck, Clock3, Coins, Eye, FileCheck2, History, Search, ShieldAlert, UserRoundMinus, X } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import DateRangeFilter from '../../components/ui/DateRangeFilter';
 import ApprovalPanel from '../../components/approvals/ApprovalPanel';
+import ApprovalDetailsModal from '../../components/approvals/ApprovalDetailsModal';
 import ApprovalStatusBadge from '../../components/approvals/ApprovalStatusBadge';
 import {
-  avatarTone, dueInfo, initials, manilaDate, peso, requestStyle, shortDetails, typeText,
+  dueInfo, manilaDate, peso, requestStyle, shortDetails, typeText,
   type ApprovalItem, type ItemType,
 } from '../../components/approvals/approvalUtils';
 
@@ -99,7 +100,8 @@ export default function Approvals() {
   }, [load]);
 
   const closePanel = () => { if (!busy) { setSelected(null); setDetail(null); } };
-  /** Clicking a row (or its checkbox) opens it in the side panel; clicking the open row again closes it. */
+  /** Needs action: clicking a row (or its checkbox) opens it in the side panel; clicking the open row again closes it.
+   *  History: only the row's View icon opens it, in the details modal. */
   const toggleRow = async (item: ApprovalItem) => {
     if (selected && itemKey(selected) === itemKey(item)) { closePanel(); return; }
     if (busy) return;
@@ -131,7 +133,8 @@ export default function Approvals() {
   ], [counts]);
 
   // The date range sits in the header, so it stays put when switching tabs or cards.
-  const resetFilters = () => { setSubtype(''); setDecision(''); setPage(1); };
+  // Switching tabs also closes the open request, so a Needs action panel never reopens as a History modal.
+  const resetFilters = () => { setSubtype(''); setDecision(''); setPage(1); closePanel(); };
   /** Cards always open the Needs action tab, filtered to what they count. */
   const showWaiting = (key: string) => {
     setSearchParams(key === 'overdue' ? { overdue: 'true' } : key === 'all' ? {} : { type: key });
@@ -156,44 +159,46 @@ export default function Approvals() {
     </button>
   );
   const headings = view === 'history'
-    ? ['Request', 'Type', 'Requester', 'Amount', 'Decided', 'Status']
+    ? ['Request', 'Type', 'Requester', 'Amount', 'Decided', 'Status', 'Action']
     : ['Request', 'Type', 'Requester', 'Amount', 'Due Date', 'Status'];
+  // Needs action keeps its checkbox column; History opens a row from the View icon in Action instead.
+  const hasCheckbox = view !== 'history';
   const emptyTitle = view === 'history' ? 'No decided requests found' : overdueOnly ? 'Nothing is overdue' : "You're all caught up";
   const emptyText = view === 'history' ? 'Approved, rejected and withdrawn requests appear here.' : 'Nothing needs your action right now.';
-  const columnCount = headings.length + 1;
+  const columnCount = headings.length + (hasCheckbox ? 1 : 0);
 
   const row = (item: ApprovalItem) => {
     const open = selected !== null && itemKey(selected) === itemKey(item);
     const style = requestStyle(item);
-    const Icon = style.icon;
     const due = dueInfo(item.submittedAt);
-    return <tr key={itemKey(item)} onClick={() => void toggleRow(item)} aria-selected={open}
-      className={`cursor-pointer border-b border-slate-100 transition-colors last:border-b-0 ${open ? 'bg-blue-50/70' : 'hover:bg-slate-50'}`}>
-      <td className="w-12 px-4 py-3.5 align-middle" onClick={(event) => event.stopPropagation()}>
+    // History rows open only from their View icon, so the row itself isn't clickable there.
+    return <tr key={itemKey(item)} onClick={hasCheckbox ? () => void toggleRow(item) : undefined} aria-selected={hasCheckbox ? open : undefined}
+      className={`border-b border-slate-100 transition-colors last:border-b-0 ${hasCheckbox ? 'cursor-pointer' : ''} ${open ? 'bg-blue-50/70' : 'hover:bg-slate-50'}`}>
+      {hasCheckbox && <td className="w-12 px-4 py-3.5 align-middle" onClick={(event) => event.stopPropagation()}>
         <input type="checkbox" checked={open} onChange={() => void toggleRow(item)} aria-label={`${open ? 'Close' : 'Open'} ${item.bookingNo}`}
           className="h-4 w-4 cursor-pointer rounded border-slate-300 accent-blue-600" />
-      </td>
+      </td>}
       <td className="px-4 py-3.5 align-middle">
-        <div className="flex min-w-0 items-center gap-3">
-          <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${style.tile}`}><Icon size={16} aria-hidden="true" /></span>
-          <div className="min-w-0">
-            <p className="font-semibold text-slate-900">{item.bookingNo}</p>
-            <p className="max-w-[220px] truncate text-xs text-slate-500" title={item.summary}>{item.type === 'crew' ? shortDetails(item) : item.client}</p>
-          </div>
+        <div className="min-w-0">
+          <p className="font-semibold text-slate-900">{item.bookingNo}</p>
+          <p className="max-w-[220px] truncate text-xs text-slate-500" title={item.summary}>{item.type === 'crew' ? shortDetails(item) : item.client}</p>
         </div>
       </td>
       <td className="whitespace-nowrap px-4 py-3.5 align-middle"><span className={`rounded-md px-2 py-1 text-xs font-medium ${style.pill}`}>{typeText(item)}</span></td>
       <td className="px-4 py-3.5 align-middle">
-        <div className="flex items-center gap-2.5">
-          <span aria-hidden="true" className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${avatarTone(item.submittedByName)}`}>{initials(item.submittedByName)}</span>
-          <div className="min-w-0"><p className="truncate text-sm font-medium text-slate-800">{item.submittedByName ?? 'Unknown user'}</p><p className="truncate text-xs text-slate-500">{item.submittedByRole ?? ''}</p></div>
-        </div>
+        <div className="min-w-0"><p className="truncate text-sm font-medium text-slate-800">{item.submittedByName ?? 'Unknown user'}</p><p className="truncate text-xs text-slate-500">{item.submittedByRole ?? ''}</p></div>
       </td>
       <td className="whitespace-nowrap px-4 py-3.5 align-middle tabular-nums text-slate-800">{item.amount === null ? '-' : peso.format(item.amount)}</td>
       {view === 'history'
         ? <td className="whitespace-nowrap px-4 py-3.5 align-middle"><p className="text-slate-800">{manilaDate(item.decidedAt)}</p><p className="text-xs text-slate-500">{item.decidedByName ? `by ${item.decidedByName}` : ''}</p></td>
         : <td className="whitespace-nowrap px-4 py-3.5 align-middle"><p className="text-slate-800">{manilaDate(due.dueAt.toISOString())}</p><p className={`text-xs font-medium ${due.tone}`}>{due.label}</p></td>}
       <td className="px-4 py-3.5 align-middle"><span title={view === 'history' ? item.decisionReason ?? undefined : undefined}><ApprovalStatusBadge status={item.status} /></span></td>
+      {view === 'history' && <td className="w-px whitespace-nowrap px-4 py-3.5 align-middle">
+        <button type="button" onClick={() => void toggleRow(item)} aria-label={`View details of ${item.bookingNo}`} title="View details"
+          className="inline-flex h-[34px] w-[34px] items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-100 hover:text-[#1a1f6e] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1a1f6e]/20">
+          <Eye size={16} aria-hidden="true" />
+        </button>
+      </td>}
     </tr>;
   };
 
@@ -237,14 +242,14 @@ export default function Approvals() {
         </div>
         {error ? <div className="flex min-h-64 flex-col items-center justify-center px-5 text-center"><ShieldAlert className="mb-2 h-8 w-8 text-amber-600" /><p className="text-sm font-medium text-slate-800">Approvals could not be loaded.</p><button onClick={() => void load()} className="mt-3 rounded-lg bg-[#030848] px-4 py-2 text-sm font-medium text-white">Retry</button></div> : <div className="overflow-x-auto"><table className="w-full min-w-[860px] table-auto text-sm">
           <thead><tr className="border-b border-slate-200 bg-white">
-            <th className="w-12 px-4 py-3"><span className="sr-only">Open</span></th>
+            {hasCheckbox && <th className="w-12 px-4 py-3"><span className="sr-only">Open</span></th>}
             {headings.map((heading) => <th key={heading} className="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold text-slate-600">{heading}</th>)}
           </tr></thead>
           <tbody>{loading ? <tr><td colSpan={columnCount} className="px-4 py-14 text-center text-sm text-slate-500">Loading approvals...</td></tr> : items.length === 0 ? <tr><td colSpan={columnCount} className="px-4 py-16 text-center">{view === 'history' ? <History className="mx-auto mb-2 h-8 w-8 text-slate-400" /> : <CheckCheck className="mx-auto mb-2 h-8 w-8 text-emerald-600" />}<p className="text-sm font-semibold text-slate-800">{emptyTitle}</p><p className="mt-1 text-sm text-slate-500">{emptyText}</p></td></tr> : items.map(row)}</tbody>
         </table></div>}
         {!error && <TablePagination page={page} totalPages={totalPages} totalItems={total} pageSize={limit} onPageChange={setPage} onPageSizeChange={(size) => { setLimit(size); setPage(1); }} />}
       </div>
-      {selected && <>
+      {view === 'waiting' && selected && <>
         {/* Below xl the panel slides over the page; tapping outside closes it. */}
         <div aria-hidden="true" className="fixed inset-0 z-[89] bg-slate-950/30 xl:hidden" onClick={closePanel} />
         {/* On xl the panel stays beside the table (it does not follow the page as it scrolls): this slot is as tall as
@@ -254,5 +259,7 @@ export default function Approvals() {
         </div>
       </>}
     </div>
+    {/* History requests are already decided, so they open read-only in the One UI details modal. */}
+    {view === 'history' && <ApprovalDetailsModal item={selected} detail={detail} loading={detailLoading} onClose={closePanel} />}
   </div>;
 }

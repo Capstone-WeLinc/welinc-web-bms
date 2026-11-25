@@ -65,18 +65,19 @@ export function dueInfo(submittedAt: string, now = Date.now()) {
   return { dueAt, label: `Due in ${hours}h`, tone: hours <= 6 ? 'text-amber-600' : 'text-slate-500' };
 }
 
-export function initials(name?: string) {
-  const parts = (name ?? '').trim().split(/\s+/).filter(Boolean);
-  return (parts.slice(0, 2).map((part) => part[0]?.toUpperCase()).join('') || '?');
-}
-
-const AVATAR_TONES = ['bg-indigo-100 text-indigo-700', 'bg-emerald-100 text-emerald-700', 'bg-amber-100 text-amber-800', 'bg-sky-100 text-sky-700', 'bg-rose-100 text-rose-700', 'bg-purple-100 text-purple-700'];
-/** The same person always gets the same colour. */
-export function avatarTone(name?: string) {
-  let hash = 0;
-  for (const char of name ?? '') hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
-  return AVATAR_TONES[hash % AVATAR_TONES.length];
-}
-
 export const canDecideStatus = (status: string) => ['pending', 'requested', 'verifying'].includes(status.toLowerCase());
 export const actionTitle = (action: string) => action.replaceAll('_', ' ').toLowerCase().replace(/^\w/, (letter) => letter.toUpperCase());
+
+/** The detail record GET /approvals/:type/:id returns; its fields differ per request type. */
+export type Detail = Record<string, unknown>;
+export const record = (value: unknown) => (value && typeof value === 'object' ? value : {}) as Detail;
+export const text = (value: unknown, fallback = 'Not available') => (value === null || value === undefined || value === '' ? fallback : String(value));
+/** "OPERATIONS" or "CUSTOMER_SERVICE" reads as "Operations" or "Customer Service". */
+export const titleCase = (value?: string) => (value ?? '').replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, (letter) => letter.toUpperCase());
+
+/** A YYYY-MM-DD calendar date as "Nov 21, 2026" (Manila); anything else is returned as is. */
+export const leaveDate = (date: string) => {
+  const parsed = new Date(`${date}T00:00:00+08:00`);
+  return !/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(parsed.getTime()) ? date : new Intl.DateTimeFormat('en-PH', { timeZone: 'Asia/Manila', month: 'short', day: 'numeric', year: 'numeric' }).format(parsed);
+};
+export const leaveDays = (start: string, end: string) => Math.round((Date.parse(`${end}T00:00:00Z`) - Date.parse(`${start}T00:00:00Z`)) / 86400000) + 1;
