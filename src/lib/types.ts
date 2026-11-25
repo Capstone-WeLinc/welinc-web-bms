@@ -91,7 +91,8 @@ export interface Booking {
   bookingItems?: BookingItem[];
   servicesAvailed?: string[];
   protectiveMaterials?: string[];
-  additionalServicesAvailed?: { name: string; price: string }[];
+  /** `cashCharge`: what paying in cash added for that service (spec bms/0013). */
+  additionalServicesAvailed?: { name: string; price: string; cashCharge?: number }[];
   additionalMaterials?: string[] | string | null;
   arrivalTime?: string | null;
   arrivalStatus?: string | null;

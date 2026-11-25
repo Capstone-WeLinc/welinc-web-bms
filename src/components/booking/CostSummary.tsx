@@ -2,6 +2,7 @@ import TotalRow from '../shared/TotalRow';
 import { useEffect, useState } from 'react';
 import { api } from '../../lib/api';
 import type { Booking } from '../../lib/types';
+import { COD_FEE_LABEL, cashChargeLabel } from '../services/detailLists';
 
 export type CostLine = { label: string; value: string; muted?: boolean };
 
@@ -13,6 +14,7 @@ export const PROTECTIVE_MATERIALS = [
   { name: 'Packaging Tape', price: 50 },
 ];
 export const INSURANCE_PRICE = 1500;
+/** Added once to a booking paid by cash on delivery. Additional services may add their own cash charge on top (spec bms/0013). */
 export const COD_SURCHARGE = 300;
 
 export const formatCost = (amount: number) => `₱${amount.toLocaleString('en-PH', { maximumFractionDigits: 2 })}`;
@@ -36,7 +38,10 @@ export function buildCostLines(booking: Booking, total: number, materials: Array
         return { label: count > 1 ? `${name} ×${count}` : name, amount: price === undefined ? null : price * count };
       }),
     ...(booking.hasInsurance ? [{ label: 'Goods in Transit Insurance', amount: INSURANCE_PRICE }] : []),
-    ...((booking.paymentMethod || booking.requestedPaymentMethod) === 'COD' ? [{ label: 'Cash Surcharge', amount: COD_SURCHARGE, prefix: '+' }] : []),
+    // Saved with the booking when it was paid in cash (spec bms/0013); older bookings have none.
+    ...(booking.additionalServicesAvailed ?? []).filter(service => (service.cashCharge ?? 0) > 0)
+      .map(service => ({ label: cashChargeLabel(service.name), amount: service.cashCharge as number, prefix: '+' })),
+    ...((booking.paymentMethod || booking.requestedPaymentMethod) === 'COD' ? [{ label: COD_FEE_LABEL, amount: COD_SURCHARGE, prefix: '+' }] : []),
   ];
   const lines: CostLine[] = items.map(({ label, amount, prefix = '' }) => amount === null
     ? { label, value: 'Not listed', muted: true }
