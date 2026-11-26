@@ -89,8 +89,6 @@ function normalizeVehicle(vehicle: Partial<Omit<VehicleAvailabilityRecord, 'stat
     status: mapVehicleStatus(vehicle.status),
     requiredHelpers: vehicle.requiredHelpers || 0,
     mileage: vehicle.mileage || 0,
-    regExpiry: vehicle.regExpiry || '',
-    insExpiry: vehicle.insExpiry || '',
     lastMaintenance: vehicle.lastMaintenance || '',
     nextMaintenance: vehicle.nextMaintenance || '',
     driverId: vehicle.driverId || null,
@@ -364,8 +362,8 @@ export default function VehicleAvailability() {
 
       {/* Modals */}
       <VehicleDetails vehicle={viewVehicle} onClose={() => setViewVehicle(null)} />
-      <DriverDetails driver={viewDriver} onClose={() => setViewDriver(null)} />
-      <HelperDetails helper={viewHelper} onClose={() => setViewHelper(null)} />
+      <DriverDetails driver={viewDriver} truck={viewDriver ? vehicles.find(vehicle => vehicle.driver?.id === viewDriver.id) ?? null : null} onClose={() => setViewDriver(null)} />
+      <HelperDetails helper={viewHelper} truck={viewHelper ? vehicles.find(vehicle => vehicle.helpers?.some(member => member.id === viewHelper.id)) ?? null : null} onClose={() => setViewHelper(null)} />
     </div>
   );
 }
@@ -686,14 +684,6 @@ function VehicleDetails({ vehicle, onClose }: { vehicle: VehicleAvailabilityReco
               </section>
 
               <section className="rounded-2xl border border-slate-200/70 bg-white p-4 shadow-sm">
-                <VehicleModalSectionTitle>Documents</VehicleModalSectionTitle>
-                <div className="mt-2">
-                  <VehicleExpiryRow label="Registration expiry" value={details.regExpiry} />
-                  <VehicleExpiryRow label="Insurance expiry" value={details.insExpiry} last />
-                </div>
-              </section>
-
-              <section className="rounded-2xl border border-slate-200/70 bg-white p-4 shadow-sm">
                 <VehicleModalSectionTitle>Assigned crew</VehicleModalSectionTitle>
                 {crew.length > 0 ? <ul className="mt-3 space-y-2.5">
                   {crew.map(({ member, role }) => <li key={`${role}-${member.id}`}><VehicleCrewRole member={member} role={role} /></li>)}
@@ -769,20 +759,6 @@ function VehicleStat({ label, value }: { label: string; value: string | number |
   </div>;
 }
 
-/** An expiry date with the same Valid / Expiring soon / Expired pill the driver licence uses. */
-function VehicleExpiryRow({ label, value, last = false }: { label: string; value?: string | null; last?: boolean }) {
-  const formatted = formatDriverModalDate(value);
-  const text = formatted === 'Not recorded' && value ? value : formatted;
-  const expiry = getLicenseExpiryStatus(value);
-  return <div className={`flex items-center justify-between gap-3 py-2.5 ${last ? '' : 'border-b border-slate-100'}`}>
-    <span className="shrink-0 text-sm text-slate-600">{label}</span>
-    <span className="flex flex-wrap items-center justify-end gap-2">
-      <span className={`text-[15px] ${text === 'Not recorded' ? 'font-normal text-slate-400' : 'font-medium text-slate-900'}`}>{text}</span>
-      {expiry && <span className={`rounded-full border px-2 py-0.5 text-xs font-medium ${expiry === 'Expired' ? 'border-red-300 bg-red-50 text-red-700' : expiry === 'Expiring soon' ? 'border-amber-300 bg-amber-50 text-amber-700' : 'border-emerald-300 bg-emerald-50 text-emerald-700'}`}>{expiry}</span>}
-    </span>
-  </div>;
-}
-
 function VehicleModalSectionTitle({ children }: { children: ReactNode }) {
   return <h3 className="flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-[#1a1f6e]"><span aria-hidden="true" className="h-4 w-[3px] rounded-full bg-[#e8b800]" />{children}</h3>;
 }
@@ -803,8 +779,12 @@ function formatAssignmentSchedule(assignment: NonNullable<VehicleAvailabilityRec
   return `${date}${start ? ` · ${start}${end ? ` to ${end}` : ''}` : ''}`;
 }
 
-/** Shared layout for the Driver and Helper details modals, matching the Vehicle details modal. */
-function CrewDetailsDialog({ open, onClose, title, name, initials, subtitle, status, stats, children }: {
+/**
+ * Shared layout for the Driver and Helper details modals (redesigned in spec bms/0018), matching the
+ * Vehicle details modal: a summary card with three quick-glance tiles, the leave notice when there is
+ * one, then the detail sections in two columns on wider screens.
+ */
+function CrewDetailsDialog({ open, onClose, title, name, initials, subtitle, status, leaveUntil, stats, children }: {
   open: boolean;
   onClose: () => void;
   title: string;
@@ -812,12 +792,13 @@ function CrewDetailsDialog({ open, onClose, title, name, initials, subtitle, sta
   initials: string;
   subtitle: string;
   status: CrewStatus;
-  stats: { label: string; value: string | number | null | undefined }[];
+  leaveUntil?: string;
+  stats: { label: string; value: string | number | null | undefined; tone?: 'good' | 'warn' | 'bad' }[];
   children: ReactNode;
 }) {
   return (
     <Dialog open={open} onOpenChange={next => { if (!next) onClose(); }}>
-      <DialogContent hideCloseButton aria-describedby={undefined} className="!flex !flex-col w-[calc(100%-2rem)] max-w-[640px] max-h-[calc(100dvh-2rem)] min-h-0 overflow-hidden rounded-2xl border-0 bg-white p-0 gap-0 shadow-xl">
+      <DialogContent hideCloseButton aria-describedby={undefined} className="!flex !flex-col w-[calc(100%-2rem)] max-w-[760px] max-h-[calc(100dvh-2rem)] min-h-0 overflow-hidden rounded-2xl border-0 bg-white p-0 gap-0 shadow-xl">
         <ModalHeader title={title} closeLabel={`Close ${title.toLowerCase()}`} />
 
         <div className="min-h-0 flex-1 space-y-3 overflow-y-auto bg-[#f1f4fa] p-4">
@@ -833,10 +814,13 @@ function CrewDetailsDialog({ open, onClose, title, name, initials, subtitle, sta
               <CrewStatusBadge status={status} detail />
             </div>
             <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-3">
-              {stats.map(stat => <VehicleStat key={stat.label} label={stat.label} value={stat.value} />)}
+              {stats.map(stat => <CrewStat key={stat.label} {...stat} />)}
             </div>
           </section>
-          {children}
+          {leaveUntil && <p className="flex items-start gap-2 rounded-xl border border-purple-200 bg-purple-50 px-4 py-3 text-sm text-purple-800"><CalendarDays className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" /><span>On leave until <span className="font-semibold">{formatDriverModalDate(leaveUntil)}</span>. They can’t be assigned to trips until then.</span></p>}
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            {children}
+          </div>
         </div>
 
         <div className="flex shrink-0 justify-end border-t border-slate-200 bg-white px-4 py-3">
@@ -854,7 +838,38 @@ function crewInitials(member: { fullName?: string } | null) {
 
 const phone = (value?: string | null) => (value ? formatContactForDisplay(value) : '');
 
-function DriverDetails({ driver, onClose }: { driver: Driver | null; onClose: () => void }) {
+/** A quick-glance tile; `tone` colours the value (used for the license status). */
+function CrewStat({ label, value, tone }: { label: string; value: string | number | null | undefined; tone?: 'good' | 'warn' | 'bad' }) {
+  const empty = value == null || value === '' || value === '-';
+  const toneClass = tone === 'good' ? 'text-emerald-700' : tone === 'warn' ? 'text-amber-700' : tone === 'bad' ? 'text-red-700' : 'text-[#0b0f4a]';
+  return <div className="min-w-0 rounded-xl bg-[#f1f4fa] px-3 py-2.5">
+    <p className="text-xs font-medium text-slate-500">{label}</p>
+    <p className={`mt-0.5 truncate text-[15px] ${empty ? 'font-normal text-slate-400' : `font-semibold ${toneClass}`}`}>{empty ? 'Not recorded' : value}</p>
+  </div>;
+}
+
+function CrewSection({ title, wide = false, children }: { title: string; wide?: boolean; children: ReactNode }) {
+  return <section className={`min-w-0 rounded-2xl border border-slate-200/70 bg-white p-4 shadow-sm ${wide ? 'sm:col-span-2' : ''}`}>
+    <VehicleModalSectionTitle>{title}</VehicleModalSectionTitle>
+    <div className="mt-2">{children}</div>
+  </section>;
+}
+
+/** The truck the driver or helper is on now, from the same vehicle list the cards use. */
+function CrewTruckSection({ truck, wide = false }: { truck: VehicleAvailabilityRecord | null; wide?: boolean }) {
+  return <CrewSection title="Assigned truck" wide={wide}>
+    {truck ? <>
+      <DriverContactRow label="Plate" value={truck.plate} />
+      <DriverContactRow label="Model" value={fullVehicleModel(truck) !== '-' ? fullVehicleModel(truck) : ''} />
+      <DriverContactRow label="Garage" value={truck.garage} last />
+    </> : <p className="flex items-center gap-2 py-2.5 text-sm text-slate-500"><Truck className="h-4 w-4" aria-hidden="true" />No truck assigned</p>}
+  </CrewSection>;
+}
+
+const LICENSE_TONE = { Valid: 'good', 'Expiring soon': 'warn', Expired: 'bad' } as const;
+
+function DriverDetails({ driver, truck, onClose }: { driver: Driver | null; truck: VehicleAvailabilityRecord | null; onClose: () => void }) {
+  const license = getLicenseExpiryStatus(driver?.licenseExpiry);
   return (
     <CrewDetailsDialog
       open={!!driver}
@@ -862,39 +877,32 @@ function DriverDetails({ driver, onClose }: { driver: Driver | null; onClose: ()
       title="Driver details"
       name={driver?.fullName ?? ''}
       initials={crewInitials(driver)}
-      subtitle="Driver"
+      subtitle={[`Driver`, driver?.licenseType].filter(Boolean).join(' · ')}
       status={displayHelperStatus(driver?.status)}
+      leaveUntil={driver?.leaveUntil}
       stats={[
-        { label: 'License type', value: driver?.licenseType },
+        { label: 'Assigned truck', value: truck?.plate || 'None' },
+        { label: 'License', value: license, tone: license ? LICENSE_TONE[license] : undefined },
+        { label: 'Contact number', value: phone(driver?.contact) },
       ]}
     >
       {driver && <>
-        {driver.leaveUntil && <p className="rounded-xl border border-purple-200 bg-purple-50 px-4 py-3 text-sm text-purple-800">On leave until <span className="font-semibold">{formatDriverModalDate(driver.leaveUntil)}</span>. They can’t be assigned to trips until then.</p>}
-        <section className="rounded-2xl border border-slate-200/70 bg-white p-4 shadow-sm">
-          <VehicleModalSectionTitle>Contact details</VehicleModalSectionTitle>
-          <div className="mt-2">
-            <DriverContactRow label="Contact number" value={phone(driver.contact)} />
-            <DriverContactRow label="Email" value={driver.email} />
-            <DriverContactRow label="Address" value={driver.address} last />
-          </div>
-        </section>
-
-        <section className="rounded-2xl border border-slate-200/70 bg-white p-4 shadow-sm">
-          <VehicleModalSectionTitle>License</VehicleModalSectionTitle>
-          <div className="mt-2">
-            <DriverContactRow label="License no." value={driver.licenseNo} />
-            <DriverContactRow label="License type" value={driver.licenseType} />
-            <VehicleExpiryRow label="License expiry" value={driver.licenseExpiry} last />
-          </div>
-        </section>
-
-        <section className="rounded-2xl border border-slate-200/70 bg-white p-4 shadow-sm">
-          <VehicleModalSectionTitle>Emergency contact</VehicleModalSectionTitle>
-          <div className="mt-2">
-            <DriverContactRow label="Name" value={driver.emergencyName} />
-            <DriverContactRow label="Contact number" value={phone(driver.emergencyContact)} last />
-          </div>
-        </section>
+        <CrewSection title="Contact details">
+          <DriverContactRow label="Contact number" value={phone(driver.contact)} />
+          <DriverContactRow label="Email" value={driver.email} />
+          <DriverContactRow label="Address" value={driver.address} last />
+        </CrewSection>
+        <CrewSection title="License">
+          <DriverContactRow label="License no." value={driver.licenseNo} />
+          <DriverContactRow label="License type" value={driver.licenseType} />
+          {/* Just the date; the Valid / Expiring soon / Expired status is the License tile above. */}
+          <DriverContactRow label="Expiry" value={driver.licenseExpiry ? formatDriverModalDate(driver.licenseExpiry) : ''} last />
+        </CrewSection>
+        <CrewSection title="Emergency contact">
+          <DriverContactRow label="Name" value={driver.emergencyName} />
+          <DriverContactRow label="Contact number" value={phone(driver.emergencyContact)} last />
+        </CrewSection>
+        <CrewTruckSection truck={truck} />
       </>}
     </CrewDetailsDialog>
   );
@@ -928,7 +936,7 @@ export function getLicenseExpiryStatus(value?: string | null): 'Valid' | 'Expiri
   return 'Valid';
 }
 
-function HelperDetails({ helper, onClose }: { helper: Helper | null; onClose: () => void }) {
+function HelperDetails({ helper, truck, onClose }: { helper: Helper | null; truck: VehicleAvailabilityRecord | null; onClose: () => void }) {
   return (
     <CrewDetailsDialog
       open={!!helper}
@@ -938,20 +946,23 @@ function HelperDetails({ helper, onClose }: { helper: Helper | null; onClose: ()
       initials={crewInitials(helper)}
       subtitle="Helper"
       status={displayHelperStatus(helper?.status)}
+      leaveUntil={helper?.leaveUntil}
       stats={[
+        { label: 'Assigned truck', value: truck?.plate || 'None' },
         { label: 'Contact number', value: phone(helper?.contact) },
         { label: 'Email', value: helper?.email },
       ]}
     >
       {helper && <>
-        {helper.leaveUntil && <p className="rounded-xl border border-purple-200 bg-purple-50 px-4 py-3 text-sm text-purple-800">On leave until <span className="font-semibold">{formatDriverModalDate(helper.leaveUntil)}</span>. They can’t be assigned to trips until then.</p>}
-        <section className="rounded-2xl border border-slate-200/70 bg-white p-4 shadow-sm">
-          <VehicleModalSectionTitle>Emergency contact</VehicleModalSectionTitle>
-          <div className="mt-2">
-            <DriverContactRow label="Name" value={helper.emergencyName} />
-            <DriverContactRow label="Contact number" value={phone(helper.emergencyContact)} last />
-          </div>
-        </section>
+        <CrewSection title="Contact details">
+          <DriverContactRow label="Contact number" value={phone(helper.contact)} />
+          <DriverContactRow label="Email" value={helper.email} last />
+        </CrewSection>
+        <CrewSection title="Emergency contact">
+          <DriverContactRow label="Name" value={helper.emergencyName} />
+          <DriverContactRow label="Contact number" value={phone(helper.emergencyContact)} last />
+        </CrewSection>
+        <CrewTruckSection truck={truck} wide />
       </>}
     </CrewDetailsDialog>
   );
