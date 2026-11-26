@@ -70,6 +70,16 @@ function isPastDate(entry: ScheduleEntry) {
   return entry.status === 'Unassigned' && isPastScheduleTime(entry.date, entry.pickupTime || entry.time);
 }
 
+/** Same rule as the status badge: an unassigned booking whose date or pickup time has passed. */
+function needsReschedule(entry: ScheduleEntry) {
+  return entry.status === 'Unassigned' && isPastScheduleTime(entry.date, entry.pickupTime || entry.time);
+}
+
+const SINGLE_ACTION_CLASS = 'inline-flex h-9 w-9 items-center justify-center rounded-lg text-slate-600 transition-colors hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1a1f6e]/30';
+
+type ScheduleStatusFilter = 'All' | 'Assigned' | 'Unassigned' | 'Needs reschedule';
+const STATUS_FILTER_OPTIONS = ['All', 'Assigned', 'Unassigned', 'Needs reschedule'] as const;
+
 function mapBookingToSchedule(booking: Booking): ScheduleEntry {
   const bookingData = booking as ApiBooking;
   const bookingStatus = bookingData.bookingStatus ?? booking.status;
@@ -127,7 +137,7 @@ export default function Scheduling({ canAssign = true }: { canAssign?: boolean }
   const [assignTarget, setAssignTarget] = useState<ScheduleEntry | null>(null);
   const [viewTarget, setViewTarget] = useState<ScheduleEntry | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>('list');
-  const [statusFilter, setStatusFilter] = useState<'All' | 'Assigned' | 'Unassigned'>('All');
+  const [statusFilter, setStatusFilter] = useState<ScheduleStatusFilter>('All');
   const [currentPage, setCurrentPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(8);
   const [, setIsLoading] = useState(true);
@@ -158,7 +168,11 @@ export default function Scheduling({ canAssign = true }: { canAssign?: boolean }
   const filtered = schedules.filter(s => {
     const matchSearch = s.client.toLowerCase().includes(search.toLowerCase()) ||
       (s.bookingNo ?? '').toLowerCase().includes(search.toLowerCase());
-    const matchStatus = statusFilter === 'All' ? true : s.status === statusFilter;
+    // Rows badged "Needs reschedule" only show under that filter, not under "Unassigned".
+    const matchStatus = statusFilter === 'All' ? true
+      : statusFilter === 'Needs reschedule' ? needsReschedule(s)
+        : statusFilter === 'Unassigned' ? s.status === 'Unassigned' && !needsReschedule(s)
+          : s.status === statusFilter;
     return matchSearch && matchStatus;
   });
 
@@ -243,7 +257,7 @@ export default function Scheduling({ canAssign = true }: { canAssign?: boolean }
     return drivers.find(driver => driver.id === entry.driverId || driver.fullName === entry.assignedDriverName);
   }
 
-  function handleStatusFilter(filter: 'All' | 'Assigned' | 'Unassigned' | 'Calendar') {
+  function handleStatusFilter(filter: ScheduleStatusFilter | 'Calendar') {
     if (filter === 'Calendar') {
       // Stay on the displayed month while it has anything to plot or review.
       const bookingDates = schedules
@@ -366,6 +380,18 @@ export default function Scheduling({ canAssign = true }: { canAssign?: boolean }
   const helperSlots = Math.max(minHelperSlots, helperSlotCount);
   // A permit booking is filed under its truck and crew, so once assigned only time, garage and delivery type can change.
   const crewLocked = Boolean(assignTarget?.permitRequired && assignTarget.status === 'Assigned');
+  // A subcontractor brings their own truck and driver, so Subcon only needs helpers from us.
+  const isSubcon = selectedDeliveryType === 'Subcon';
+  const resourcesComplete = isSubcon || Boolean(selectedGarage && selectedVehicle && selectedDriver);
+
+  function handleDeliveryTypeChange(value: 'Inhouse' | 'Subcon' | '') {
+    setSelectedDeliveryType(value);
+    if (value !== 'Subcon') return;
+    setSelectedGarage('');
+    setSelectedVehicle('');
+    setSelectedDriver('');
+    setAssignmentTouched(current => ({ ...current, garage: false, vehicle: false, driver: false }));
+  }
 
 
   function getAvailableVehicles() {
@@ -417,10 +443,10 @@ export default function Scheduling({ canAssign = true }: { canAssign?: boolean }
     if (!canAssign || !assignTarget) return;
     const requiredHelperValues = selectedHelpers.slice(0, minHelperSlots);
     const nextTouched: Record<string, boolean> = {
-      time: true, garage: true, deliveryType: true, vehicle: true, driver: true,
+      time: true, deliveryType: true, garage: !isSubcon, vehicle: !isSubcon, driver: !isSubcon,
     };
     for (let index = 0; index < minHelperSlots; index += 1) nextTouched[`helper-${index}`] = true;
-    if (!assignTime || !selectedGarage || !selectedDeliveryType || !selectedVehicle || !selectedDriver || requiredHelperValues.filter(Boolean).length < minHelperSlots) {
+    if (!assignTime || !selectedDeliveryType || !resourcesComplete || requiredHelperValues.filter(Boolean).length < minHelperSlots) {
       setAssignmentTouched(nextTouched);
       toast.error('Please complete all required assignment fields.');
       return;
@@ -438,10 +464,9 @@ export default function Scheduling({ canAssign = true }: { canAssign?: boolean }
       if (timeParts[3].toUpperCase() === 'PM') hour24 += 12;
       const payload: Record<string, unknown> = {
         dispatchTime: `${pad2(hour24)}:${timeParts[2]}`,
-        garage: selectedGarage,
         deliveryType: selectedDeliveryType || undefined,
-        vehicleId: selectedVehicle,
-        driverId: selectedDriver,
+        // Subcon sends no garage, vehicle or driver; the backend stores them as empty.
+        ...(!isSubcon && { garage: selectedGarage, vehicleId: selectedVehicle, driverId: selectedDriver }),
       };
       payload.helperIds = helpers;
       payload.travelConfirmed = travelConfirmed;
@@ -522,7 +547,7 @@ export default function Scheduling({ canAssign = true }: { canAssign?: boolean }
           <div />
         )}
         <div className="flex gap-2 flex-wrap items-center">
-          <StatusFilter options={['All', 'Assigned', 'Unassigned'] as const} value={statusFilter} onChange={handleStatusFilter} />
+          <StatusFilter options={STATUS_FILTER_OPTIONS} value={statusFilter} onChange={handleStatusFilter} />
           <button
             type="button"
             aria-pressed={viewMode === 'calendar'}
@@ -597,6 +622,12 @@ export default function Scheduling({ canAssign = true }: { canAssign?: boolean }
                       </td>
                       <td className="px-4 py-2.5 align-top">
                         <div className="flex items-center justify-center">
+                          {/* One action shows as its own icon button; the ⋮ menu is only for two or more. */}
+                          {!canAssign ? (
+                            <button type="button" onClick={() => openView(s)} aria-label="View" title="View" className={SINGLE_ACTION_CLASS}><Eye className="h-4 w-4" /></button>
+                          ) : s.status === 'Unassigned' && !isPastDate(s) ? (
+                            <button type="button" onClick={() => openAssign(s)} aria-label="Assign" title="Assign" className={SINGLE_ACTION_CLASS}><ClipboardList className="h-4 w-4" /></button>
+                          ) : (
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                               <button type="button" aria-label="Row actions" className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-slate-600 transition-colors hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1a1f6e]/30">
@@ -604,9 +635,7 @@ export default function Scheduling({ canAssign = true }: { canAssign?: boolean }
                               </button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end" className="w-fit min-w-0 rounded-xl border-slate-200 bg-white p-1 shadow-lg">
-                              {!canAssign ? (
-                                <DropdownMenuItem onSelect={() => openView(s)} className="w-fit gap-2 whitespace-nowrap rounded-lg px-3 py-2 text-sm text-slate-700"><Eye className="h-4 w-4" /> View</DropdownMenuItem>
-                              ) : isPastDate(s) ? (
+                              {isPastDate(s) ? (
                                 // "Needs reschedule": Assign/Edit stays visible but disabled, with the reason in a note below.
                                 <div className="w-64">
                                   <DropdownMenuItem onSelect={() => openView(s)} className="gap-2 whitespace-nowrap rounded-lg px-3 py-2 text-sm text-slate-700"><Eye className="h-4 w-4" /> View</DropdownMenuItem>
@@ -617,8 +646,6 @@ export default function Scheduling({ canAssign = true }: { canAssign?: boolean }
                                     <span>Service date or pickup time has passed. CS needs to reschedule this booking first.</span>
                                   </p>
                                 </div>
-                              ) : s.status === 'Unassigned' ? (
-                                <DropdownMenuItem onSelect={() => openAssign(s)} className="w-fit gap-2 whitespace-nowrap rounded-lg px-3 py-2 text-sm text-slate-700"><ClipboardList className="h-4 w-4" /> Assign</DropdownMenuItem>
                               ) : (
                                 <>
                                   <DropdownMenuItem onSelect={() => openView(s)} className="w-fit gap-2 whitespace-nowrap rounded-lg px-3 py-2 text-sm text-slate-700"><Eye className="h-4 w-4" /> View</DropdownMenuItem>
@@ -627,6 +654,7 @@ export default function Scheduling({ canAssign = true }: { canAssign?: boolean }
                               )}
                             </DropdownMenuContent>
                           </DropdownMenu>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -742,7 +770,7 @@ export default function Scheduling({ canAssign = true }: { canAssign?: boolean }
 
                     <div>
                       <Label className="mb-1.5 block text-[13px] font-medium text-slate-700">Delivery type <span className="text-red-600">*</span></Label>
-                      <Select value={selectedDeliveryType} onValueChange={value => setSelectedDeliveryType(value as 'Inhouse' | 'Subcon' | '')}>
+                      <Select value={selectedDeliveryType} onValueChange={value => handleDeliveryTypeChange(value as 'Inhouse' | 'Subcon' | '')}>
                         <SelectTrigger onBlur={() => touchAssignmentField('deliveryType')} aria-required="true" aria-invalid={assignmentFieldError('deliveryType', selectedDeliveryType)} className={`h-[42px] justify-start rounded-lg border border-slate-300 bg-white px-3 text-left text-sm text-slate-900 shadow-none focus:border-[#1a1f6e] focus:ring-2 focus:ring-[#1a1f6e]/20 [&>span]:flex-1 [&>span]:text-left [&>svg:last-child]:ml-auto ${assignmentFieldError('deliveryType', selectedDeliveryType) ? 'border-red-500 focus:border-red-500 focus:ring-red-500/20' : ''}`}>
                           <PackageCheck className="mr-2 h-[18px] w-[18px] shrink-0 text-slate-500" aria-hidden="true" /><SelectValue placeholder="Select or type a delivery type" />
                         </SelectTrigger>
@@ -760,9 +788,9 @@ export default function Scheduling({ canAssign = true }: { canAssign?: boolean }
                   <div className="grid grid-cols-1 gap-x-[18px] gap-y-4 sm:grid-cols-2">
                     <div>
                       <Label className="mb-1.5 block text-[13px] font-medium text-slate-700">Garage (vehicle location) <span className="text-red-600">*</span></Label>
-                      <Select value={selectedGarage} onValueChange={setSelectedGarage}>
+                      <Select disabled={isSubcon} value={selectedGarage} onValueChange={setSelectedGarage}>
                         <SelectTrigger onBlur={() => touchAssignmentField('garage')} aria-required="true" aria-invalid={assignmentFieldError('garage', selectedGarage)} className={`h-[42px] justify-start rounded-lg border border-slate-300 bg-white px-3 text-left text-sm text-slate-900 shadow-none focus:border-[#1a1f6e] focus:ring-2 focus:ring-[#1a1f6e]/20 [&>span]:flex-1 [&>span]:text-left [&>svg:last-child]:ml-auto ${assignmentFieldError('garage', selectedGarage) ? 'border-red-500 focus:border-red-500 focus:ring-red-500/20' : ''}`}>
-                          <Warehouse className="mr-2 h-[18px] w-[18px] shrink-0 text-slate-500" aria-hidden="true" /><SelectValue placeholder="Select or type a garage" />
+                          <Warehouse className="mr-2 h-[18px] w-[18px] shrink-0 text-slate-500" aria-hidden="true" /><SelectValue placeholder={isSubcon ? 'Not needed for Subcon' : 'Select or type a garage'} />
                         </SelectTrigger>
                         <SelectContent>{garages.map(garage => <SelectItem key={garage} value={garage}>{garage}</SelectItem>)}</SelectContent>
                       </Select>
@@ -771,9 +799,9 @@ export default function Scheduling({ canAssign = true }: { canAssign?: boolean }
 
                     <div>
                       <Label className="mb-1.5 block text-[13px] font-medium text-slate-700">Vehicle <span className="text-red-600">*</span></Label>
-                      <Select disabled={crewLocked} value={selectedVehicle} onValueChange={value => { setSelectedVehicle(value); setSelectedHelpers([]); setHelperSlotCount(1); }}>
+                      <Select disabled={crewLocked || isSubcon} value={selectedVehicle} onValueChange={value => { setSelectedVehicle(value); setSelectedHelpers([]); setHelperSlotCount(1); }}>
                         <SelectTrigger onBlur={() => touchAssignmentField('vehicle')} aria-required="true" aria-invalid={assignmentFieldError('vehicle', selectedVehicle)} className={`h-[42px] justify-start rounded-lg border border-slate-300 bg-white px-3 text-left text-sm text-slate-900 shadow-none focus:border-[#1a1f6e] focus:ring-2 focus:ring-[#1a1f6e]/20 [&>span]:flex-1 [&>span]:text-left [&>svg:last-child]:ml-auto ${assignmentFieldError('vehicle', selectedVehicle) ? 'border-red-500 focus:border-red-500 focus:ring-red-500/20' : ''}`}>
-                          <TruckIcon className="mr-2 h-[18px] w-[18px] shrink-0 text-slate-500" aria-hidden="true" /><SelectValue placeholder="Select or type a vehicle" />
+                          <TruckIcon className="mr-2 h-[18px] w-[18px] shrink-0 text-slate-500" aria-hidden="true" /><SelectValue placeholder={isSubcon ? 'Not needed for Subcon' : 'Select or type a vehicle'} />
                         </SelectTrigger>
                         <SelectContent>
                           {availableVehicles.length === 0 && <SelectItem value="none" disabled>No available vehicles</SelectItem>}
@@ -794,9 +822,9 @@ export default function Scheduling({ canAssign = true }: { canAssign?: boolean }
 
                     <div>
                       <Label className="mb-1.5 block text-[13px] font-medium text-slate-700">Driver <span className="text-red-600">*</span></Label>
-                      <Select disabled={crewLocked} value={selectedDriver} onValueChange={setSelectedDriver}>
+                      <Select disabled={crewLocked || isSubcon} value={selectedDriver} onValueChange={setSelectedDriver}>
                         <SelectTrigger onBlur={() => touchAssignmentField('driver')} aria-required="true" aria-invalid={assignmentFieldError('driver', selectedDriver)} className={`h-[42px] justify-start rounded-lg border border-slate-300 bg-white px-3 text-left text-sm text-slate-900 shadow-none focus:border-[#1a1f6e] focus:ring-2 focus:ring-[#1a1f6e]/20 [&>span]:flex-1 [&>span]:text-left [&>svg:last-child]:ml-auto ${assignmentFieldError('driver', selectedDriver) ? 'border-red-500 focus:border-red-500 focus:ring-red-500/20' : ''}`}>
-                          <ContactRound className="mr-2 h-[18px] w-[18px] shrink-0 text-slate-500" aria-hidden="true" /><SelectValue placeholder="Select or type a driver" />
+                          <ContactRound className="mr-2 h-[18px] w-[18px] shrink-0 text-slate-500" aria-hidden="true" /><SelectValue placeholder={isSubcon ? 'Not needed for Subcon' : 'Select or type a driver'} />
                         </SelectTrigger>
                         <SelectContent>
                           {availableDrivers.length === 0 && <SelectItem value="none" disabled>No available drivers</SelectItem>}
@@ -872,7 +900,7 @@ export default function Scheduling({ canAssign = true }: { canAssign?: boolean }
 
               <div className="flex shrink-0 justify-end gap-2 border-t border-slate-200 bg-white px-4 py-3">
                 <button type="button" onClick={() => { setAssignTarget(null); setAssignmentTouched({}); }} className="inline-flex h-10 w-fit items-center whitespace-nowrap rounded-lg border border-slate-300 bg-white px-4 text-sm font-medium text-slate-700 hover:bg-slate-50">Cancel</button>
-                <button type="button" onClick={handleAssign} disabled={!assignTime || !selectedGarage || !selectedDeliveryType || !selectedVehicle || !selectedDriver || selectedHelpers.slice(0, helperSlots).filter(Boolean).length < helperSlots || blockedMessages.length > 0 || (unverifiedMessages.length > 0 && !travelConfirmed)} className="inline-flex h-10 w-fit items-center gap-1.5 whitespace-nowrap rounded-lg bg-[#030848] px-4 text-sm font-medium text-white hover:bg-[#141a6b] disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400">
+                <button type="button" onClick={handleAssign} disabled={!assignTime || !selectedDeliveryType || !resourcesComplete || selectedHelpers.slice(0, helperSlots).filter(Boolean).length < helperSlots || blockedMessages.length > 0 || (unverifiedMessages.length > 0 && !travelConfirmed)} className="inline-flex h-10 w-fit items-center gap-1.5 whitespace-nowrap rounded-lg bg-[#030848] px-4 text-sm font-medium text-white hover:bg-[#141a6b] disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400">
                   <Check className="h-4 w-4" aria-hidden="true" />Confirm assignment
                 </button>
               </div>
