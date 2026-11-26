@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import * as DialogPrimitive from '@radix-ui/react-dialog';
-import { AlertTriangle, X } from 'lucide-react';
+import { X } from 'lucide-react';
 
 /**
  * The One UI delete confirmation (first used on Services Offered). Every delete
@@ -25,8 +25,7 @@ export default function DeleteConfirmModal({ open, title, itemName, deleting = f
         <div className="pointer-events-none fixed inset-0 z-[60] flex items-center justify-center p-4">
           <DialogPrimitive.Content aria-describedby={undefined} className="pointer-events-auto max-h-[90vh] w-full max-w-[420px] overflow-y-auto rounded-xl border border-slate-200 bg-white p-5 text-slate-800 shadow-xl focus:outline-none">
             <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-3 text-red-600">
-                <AlertTriangle size={18} strokeWidth={2} aria-hidden="true" />
+              <div className="flex items-center text-red-600">
                 <DialogPrimitive.Title className="text-lg font-semibold">{title}</DialogPrimitive.Title>
               </div>
               <button type="button" onClick={onCancel} disabled={deleting} aria-label="Close delete dialog" className="rounded-lg p-2 text-slate-600 hover:bg-slate-100 disabled:opacity-50">

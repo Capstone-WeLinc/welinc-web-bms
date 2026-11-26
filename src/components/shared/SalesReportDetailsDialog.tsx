@@ -1,6 +1,5 @@
 import ModalHeader from '../ui/ModalHeader';
 import TotalRow from './TotalRow';
-import { FileText } from 'lucide-react';
 import type { DailySalesEntry } from '../../lib/types';
 import { Dialog, DialogContent } from '../ui/Dialog';
 
@@ -15,7 +14,7 @@ export default function SalesReportDetailsDialog({ entry: viewEntry, onClose }: 
   return (
       <Dialog open={!!viewEntry} onOpenChange={open => { if (!open) onClose(); }}>
       <DialogContent hideCloseButton aria-describedby={undefined} className="gap-0 flex max-h-[90vh] w-[calc(100%-2rem)] max-w-[460px] flex-col overflow-hidden rounded-xl border-0 bg-white p-0 shadow-xl sm:rounded-xl">
-          <ModalHeader icon={FileText} title="Monthly report details" subtitle={viewEntry?.bookingNo || undefined} closeLabel="Close monthly report details" />
+          <ModalHeader title="Monthly report details" subtitle={viewEntry?.bookingNo || undefined} closeLabel="Close monthly report details" />
           {viewEntry && (
             <div className="min-h-0 space-y-3 overflow-y-auto bg-[#f1f4fa] p-4">
               <section className="rounded-xl border border-slate-200/70 bg-white p-4">

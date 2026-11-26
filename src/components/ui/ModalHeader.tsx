@@ -1,18 +1,16 @@
 import type { ReactNode } from 'react';
 import * as DialogPrimitive from '@radix-ui/react-dialog';
-import { X, type LucideIcon } from 'lucide-react';
+import { X } from 'lucide-react';
 
 /**
- * The One UI modal header, used by every modal: navy bar, gold icon tile, white
- * title, optional gold subtitle (usually a reference number), optional badge,
- * and the gold close button. Modeled on Booking details.
+ * The One UI modal header, used by every modal: navy bar, white title (no icon
+ * beside it, spec bms/0017), optional gold subtitle (usually a reference number),
+ * optional badge, and the gold close button. Modeled on Booking details.
  *
  * Inside a Radix <Dialog> leave `plain` off so the title and subtitle are wired
  * to the dialog for screen readers. Hand-built modals pass `plain` and `titleId`.
  */
-export default function ModalHeader({ icon: Icon, title, subtitle, aside, onClose, closeLabel = 'Close', closeDisabled = false, plain = false, titleId }: {
-  /** Leave out to show the title without the gold icon tile. */
-  icon?: LucideIcon;
+export default function ModalHeader({ title, subtitle, aside, onClose, closeLabel = 'Close', closeDisabled = false, plain = false, titleId }: {
   title: ReactNode;
   subtitle?: ReactNode;
   /** Shown before the close button, e.g. a status badge. */
@@ -31,10 +29,7 @@ export default function ModalHeader({ icon: Icon, title, subtitle, aside, onClos
 
   return (
     <header className="flex shrink-0 items-center justify-between gap-3 bg-[#1a1f6e] px-5 py-4 text-left text-white">
-      <div className="flex min-w-0 items-center gap-3">
-        {Icon && <span aria-hidden="true" className="flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-xl bg-[#e8b800] text-[#1a1f6e]">
-          <Icon size={20} strokeWidth={2.5} />
-        </span>}
+      <div className="flex min-w-0 items-center">
         <div className="min-w-0 space-y-1">
           {plain
             ? <h2 id={titleId} className={titleClass}>{title}</h2>

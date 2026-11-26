@@ -441,7 +441,7 @@ export default function PostService() {
       {/* View Modal */}
       <Dialog open={!!viewBooking} onOpenChange={() => setViewBooking(null)}>
         <DialogContent hideCloseButton aria-describedby={undefined} className="flex max-h-[90vh] w-[calc(100%-2rem)] max-w-[480px] flex-col gap-0 overflow-hidden rounded-2xl border-0 bg-white p-0 shadow-2xl sm:rounded-2xl">
-          <ModalHeader icon={ClipboardList} title="Post-service record" closeLabel="Close post-service record" />
+          <ModalHeader title="Post-service record" closeLabel="Close post-service record" />
           {viewBooking && (
             <>
             <div className="min-h-0 flex-1 space-y-3 overflow-y-auto bg-[#f1f4fa] p-4">
@@ -498,7 +498,6 @@ export default function PostService() {
           {editBooking && (
             <>
               <ModalHeader
-                icon={CheckCircle2}
                 title="Trip completion"
                 closeLabel="Close trip completion"
               />

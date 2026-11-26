@@ -1,6 +1,6 @@
 import ModalHeader from '../ui/ModalHeader';
 import type { FormEvent, ReactNode } from 'react';
-import { Mail, Pencil, Phone, ShieldCheck } from 'lucide-react';
+import { Mail, Phone, ShieldCheck } from 'lucide-react';
 import type { Booking } from '../../lib/types';
 import { downpaymentError, formatBookingAmount, normalizeBookingStatus, remainingBalance } from '../../lib/booking';
 import { Dialog, DialogContent } from '../ui/Dialog';
@@ -67,7 +67,6 @@ export default function EditBookingDialog({ booking, onChange, touched, onTouch,
         className="flex max-h-[90vh] w-[calc(100vw-2rem)] max-w-4xl flex-col gap-0 overflow-hidden rounded-xl border-0 bg-white p-0 text-slate-800 shadow-xl sm:rounded-xl lg:w-[min(78vw,56rem)] xl:w-[min(68vw,56rem)]"
       >
         <ModalHeader
-          icon={Pencil}
           title="Edit booking"
           subtitle={booking?.bookingNo ?? '-'}
           onClose={onClose}

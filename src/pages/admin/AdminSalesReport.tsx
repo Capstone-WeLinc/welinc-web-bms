@@ -816,7 +816,7 @@ export default function AdminSalesReport() {
                           <p className="font-bold text-slate-900 dark:text-white text-sm">
                             {entry.clientName}
                           </p>
-                          <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                          <p className="text-xs text-slate-500 dark:text-slate-400">
                             {entry.bookingNo || entry.traceNo || '-'}
                           </p>
                         </td>
@@ -885,7 +885,6 @@ export default function AdminSalesReport() {
           {viewMonth && (
             <div className="overflow-hidden rounded-2xl bg-white">
               <ModalHeader
-                icon={FileText}
                 title={`${viewMonth.monthName} ${appliedDate.slice(0, 4)} sales summary`}
                 subtitle="MONTHLY SALES"
                 closeLabel="Close monthly sales summary"

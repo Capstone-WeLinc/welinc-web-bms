@@ -311,7 +311,6 @@ export default function NewBookingWizard({ open, onClose, onConfirm }: Props) {
 
         {/* ─ Header ─ */}
         <ModalHeader
-          icon={Package}
           title="New booking"
           subtitle={`Step ${step} of 6 · ${STEP_LABELS[step - 1]}`}
           onClose={onClose}

@@ -134,14 +134,14 @@ export default function ActivityLogs() {
                   </tr>
                 ) : visible.map(row => (
                   <tr key={row.id} className="transition-colors hover:bg-slate-50/70">
-                    <td className="max-w-[260px] px-3 py-3 align-middle">
+                    <td className="max-w-[260px] px-4 py-3 align-middle">
                       <p className="truncate font-semibold text-slate-800">{row.userName || 'Unknown user'}</p>
                       {row.email && <p className="truncate text-xs text-slate-500">{row.email}</p>}
                     </td>
-                    <td className="whitespace-nowrap px-3 py-3 align-middle text-slate-800">{row.tag}</td>
-                    <td className="px-3 py-3 align-middle text-slate-800">{row.action}</td>
-                    <td className="whitespace-nowrap px-3 py-3 align-middle text-slate-800">{isValidDate(row.createdAt) ? manilaDate(row.createdAt) : '-'}</td>
-                    <td className="whitespace-nowrap px-3 py-3 align-middle tabular-nums text-slate-800">{isValidDate(row.createdAt) ? manilaTime(row.createdAt) : '-'}</td>
+                    <td className="whitespace-nowrap px-4 py-3 align-middle text-slate-800">{row.tag}</td>
+                    <td className="px-4 py-3 align-middle text-slate-800">{row.action}</td>
+                    <td className="whitespace-nowrap px-4 py-3 align-middle text-slate-800">{isValidDate(row.createdAt) ? manilaDate(row.createdAt) : '-'}</td>
+                    <td className="whitespace-nowrap px-4 py-3 align-middle tabular-nums text-slate-800">{isValidDate(row.createdAt) ? manilaTime(row.createdAt) : '-'}</td>
                   </tr>
                 ))}
               </tbody>

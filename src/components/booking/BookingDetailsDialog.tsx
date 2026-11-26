@@ -1,6 +1,6 @@
 import ModalHeader from '../ui/ModalHeader';
 import type { ReactNode } from 'react';
-import { AlertCircle, Package } from 'lucide-react';
+import { AlertCircle } from 'lucide-react';
 import type { Booking } from '../../lib/types';
 import { normalizeBookingStatus } from '../../lib/booking';
 import StatusBadge from '../shared/StatusBadge';
@@ -53,7 +53,6 @@ export default function BookingDetailsDialog({ booking, onClose }: { booking: Bo
         className="flex max-h-[90vh] w-[calc(100vw-2rem)] max-w-4xl flex-col gap-0 overflow-hidden rounded-xl border-0 bg-white p-0 text-slate-800 shadow-xl sm:rounded-xl lg:w-[min(78vw,56rem)] xl:w-[min(68vw,56rem)]"
       >
         <ModalHeader
-          icon={Package}
           title="Booking details"
           subtitle={booking?.bookingNo ?? '-'}
           aside={booking && <StatusBadge status={normalizeBookingStatus(booking.status)} variant="outline" />}

@@ -182,7 +182,6 @@ export interface Driver {
   licenseType: string;
   licenseExpiry: string;
   status: CrewStatus;
-  joinDate: string;
   emergencyName: string;
   emergencyContact: string;
   vehicleId: string | null;
@@ -198,7 +197,6 @@ export interface Helper {
   contact: string;
   email?: string;
   status: CrewStatus;
-  joinDate: string;
   emergencyName?: string;
   emergencyContact?: string;
   /** Last day of an approved leave or an emergency, when status is On Leave (spec bms/0003). */

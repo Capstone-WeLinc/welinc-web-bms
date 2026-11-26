@@ -174,26 +174,26 @@ export default function Approvals() {
     // History rows open only from their View icon, so the row itself isn't clickable there.
     return <tr key={itemKey(item)} onClick={hasCheckbox ? () => void toggleRow(item) : undefined} aria-selected={hasCheckbox ? open : undefined}
       className={`border-b border-slate-100 transition-colors last:border-b-0 ${hasCheckbox ? 'cursor-pointer' : ''} ${open ? 'bg-blue-50/70' : 'hover:bg-slate-50'}`}>
-      {hasCheckbox && <td className="w-12 px-4 py-3.5 align-middle" onClick={(event) => event.stopPropagation()}>
+      {hasCheckbox && <td className="w-12 px-4 py-3 align-middle" onClick={(event) => event.stopPropagation()}>
         <input type="checkbox" checked={open} onChange={() => void toggleRow(item)} aria-label={`${open ? 'Close' : 'Open'} ${item.bookingNo}`}
           className="h-4 w-4 cursor-pointer rounded border-slate-300 accent-blue-600" />
       </td>}
-      <td className="px-4 py-3.5 align-middle">
+      <td className="px-4 py-3 align-middle">
         <div className="min-w-0">
           <p className="font-semibold text-slate-900">{item.bookingNo}</p>
           <p className="max-w-[220px] truncate text-xs text-slate-500" title={item.summary}>{item.type === 'crew' ? shortDetails(item) : item.client}</p>
         </div>
       </td>
-      <td className="whitespace-nowrap px-4 py-3.5 align-middle"><span className={`rounded-md px-2 py-1 text-xs font-medium ${style.pill}`}>{typeText(item)}</span></td>
-      <td className="px-4 py-3.5 align-middle">
+      <td className="whitespace-nowrap px-4 py-3 align-middle"><span className={`inline-flex items-center rounded-full px-3.5 py-1 text-sm font-bold ${style.pill}`}>{typeText(item)}</span></td>
+      <td className="px-4 py-3 align-middle">
         <div className="min-w-0"><p className="truncate text-sm font-medium text-slate-800">{item.submittedByName ?? 'Unknown user'}</p><p className="truncate text-xs text-slate-500">{item.submittedByRole ?? ''}</p></div>
       </td>
-      <td className="whitespace-nowrap px-4 py-3.5 align-middle tabular-nums text-slate-800">{item.amount === null ? '-' : peso.format(item.amount)}</td>
+      <td className="whitespace-nowrap px-4 py-3 align-middle tabular-nums text-slate-800">{item.amount === null ? '-' : peso.format(item.amount)}</td>
       {view === 'history'
-        ? <td className="whitespace-nowrap px-4 py-3.5 align-middle"><p className="text-slate-800">{manilaDate(item.decidedAt)}</p><p className="text-xs text-slate-500">{item.decidedByName ? `by ${item.decidedByName}` : ''}</p></td>
-        : <td className="whitespace-nowrap px-4 py-3.5 align-middle"><p className="text-slate-800">{manilaDate(due.dueAt.toISOString())}</p><p className={`text-xs font-medium ${due.tone}`}>{due.label}</p></td>}
-      <td className="px-4 py-3.5 align-middle"><span title={view === 'history' ? item.decisionReason ?? undefined : undefined}><ApprovalStatusBadge status={item.status} /></span></td>
-      {view === 'history' && <td className="w-px whitespace-nowrap px-4 py-3.5 align-middle">
+        ? <td className="whitespace-nowrap px-4 py-3 align-middle"><p className="text-slate-800">{manilaDate(item.decidedAt)}</p><p className="text-xs text-slate-500">{item.decidedByName ? `by ${item.decidedByName}` : ''}</p></td>
+        : <td className="whitespace-nowrap px-4 py-3 align-middle"><p className="text-slate-800">{manilaDate(due.dueAt.toISOString())}</p><p className={`text-xs font-medium ${due.tone}`}>{due.label}</p></td>}
+      <td className="px-4 py-3 align-middle"><span title={view === 'history' ? item.decisionReason ?? undefined : undefined}><ApprovalStatusBadge status={item.status} /></span></td>
+      {view === 'history' && <td className="w-px whitespace-nowrap px-4 py-3 align-middle">
         <button type="button" onClick={() => void toggleRow(item)} aria-label={`View details of ${item.bookingNo}`} title="View details"
           className="inline-flex h-[34px] w-[34px] items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-100 hover:text-[#1a1f6e] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1a1f6e]/20">
           <Eye size={16} aria-hidden="true" />
