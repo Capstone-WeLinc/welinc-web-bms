@@ -402,7 +402,6 @@ export default function OperationsScheduling() {
       <Dialog open={!!assignTarget} onOpenChange={() => { setAssignTarget(null); setAssignmentTouched(EMPTY_ASSIGNMENT_TOUCHED); }}>
         <DialogContent hideCloseButton aria-describedby={undefined} className="!flex !flex-col w-[calc(100%-2rem)] max-w-md max-h-[calc(100dvh-2rem)] min-h-0 overflow-hidden rounded-2xl border-0 bg-white p-0 gap-0 shadow-xl">
           <ModalHeader
-            icon={UserCheck}
             title={assignTarget?.status === 'Assigned' ? 'Edit assignment' : 'Assign booking'}
             subtitle={assignTarget?.bookingNo || undefined}
             closeLabel="Close assign booking"

@@ -22,7 +22,6 @@ export type CrewMember = {
   email: string;
   contact: string;
   status: CrewStatus;
-  joinDate: string;
   licenseNo: string;
   licenseType: string;
   licenseExpiry: string;
@@ -34,7 +33,6 @@ export type CrewMember = {
 /** The details BMS keeps. Name, email and contact number are not here: they are edited in the portal. */
 export type CrewInput = {
   status: CrewStatus;
-  joinDate: string;
   licenseNo?: string;
   licenseType?: string;
   licenseExpiry?: string;
@@ -69,7 +67,6 @@ export function normalizeCrew(raw: RawCrew, role: CrewRole, readDay: (value: unk
     email: text(raw.email),
     contact: text(raw.contact),
     status: toStatus(raw.status ?? raw.crewStatus),
-    joinDate: readDay(raw.joinDate),
     licenseNo: text(raw.licenseNo ?? raw.licenseNumber),
     licenseType: text(raw.licenseType) || "Professional",
     licenseExpiry: readDay(raw.licenseExpiry),
@@ -85,7 +82,6 @@ const path = (role: CrewRole) => (role === "DRIVER" ? "/bms/config/drivers" : "/
 function payload(role: CrewRole, input: CrewInput) {
   const base = {
     status: input.status,
-    joinDate: input.joinDate,
     emergencyName: input.emergencyName,
     emergencyContact: input.emergencyContact,
   };

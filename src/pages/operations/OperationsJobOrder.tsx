@@ -535,7 +535,6 @@ export default function OperationsJobOrder({ showKpis = false }: { showKpis?: bo
             return (
               <div className="bg-[#f1f4fa]">
                 <ModalHeader
-                  icon={ClipboardList}
                   title="Job order details"
                   subtitle={details.jobOrder.jobOrderNo || 'Job order'}
                   aside={<StatusBadge status={details.status} variant="job-order-status" />}

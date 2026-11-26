@@ -1,9 +1,9 @@
 import type { ApiCrew } from '../../lib/api-shapes';
 import { StatusFilter } from '../../components/ui/ListSearchFilters';
 import PageHeader from '../../components/pageheader/Pageheader';
+import CardPagination from '../../components/ui/CardPagination';
 import { type ReactNode, useEffect, useState } from 'react';
-import { AlertCircle, BusFront, CalendarDays, CheckCircle2, ChevronDown, Contact, Eye, MapPinned, Search, Truck, User, UserCheck, UserRoundX, Users } from 'lucide-react';
-import type { LucideIcon } from 'lucide-react';
+import { AlertCircle, BusFront, CalendarDays, CheckCircle2, Contact, Eye, MapPinned, Search, Truck, User, UserCheck, UserRoundX, Users } from 'lucide-react';
 import ModalHeader from '../../components/ui/ModalHeader';
 import { api } from '../../lib/api';
 import { formatPhoneLocal } from '../../lib/phone';
@@ -47,7 +47,8 @@ function displayHelperStatus(status?: string | null): CrewStatus {
 }
 
 // Cards sit 2 or 3 across, so each batch is a multiple of 6 to keep every row full.
-const CARD_BATCH = 12;
+/** Cards per page: four rows of the three-column grid. */
+const CARDS_PER_PAGE = 12;
 
 function normalizeHelper(helper: Helper): Helper {
   return { ...helper, status: displayHelperStatus(helper.status) };
@@ -121,7 +122,6 @@ function normalizeDriver(driver: ApiCrew): Driver {
     licenseType: driver.licenseType || 'Professional',
     licenseExpiry: driver.licenseExpiry || '',
     status: displayHelperStatus(driver.status || driver.crewStatus),
-    joinDate: driver.joinDate || '',
     emergencyName: driver.emergencyName || '',
     emergencyContact: driver.emergencyContact || '',
     vehicleId: driver.vehicleId || null,
@@ -168,7 +168,7 @@ export default function VehicleAvailability() {
   const [activeTab, setActiveTab] = useState<ActiveTab>('vehicles');
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('All');
-  const [visibleCount, setVisibleCount] = useState(CARD_BATCH);
+  const [page, setPage] = useState(1);
 
   const [viewVehicle, setViewVehicle] = useState<VehicleAvailabilityRecord | null>(null);
   const [viewDriver, setViewDriver] = useState<Driver | null>(null);
@@ -277,12 +277,14 @@ export default function VehicleAvailability() {
 
   const filtered = activeTab === 'vehicles' ? filteredVehicles : activeTab === 'drivers' ? filteredDrivers : filteredHelpers;
 
-  const paginated = filtered.slice(0, visibleCount);
-  const remaining = filtered.length - paginated.length;
+  // Card pagination: the live refresh can shrink the list, so the page is clamped to what exists.
+  const pageCount = Math.max(1, Math.ceil(filtered.length / CARDS_PER_PAGE));
+  const currentPage = Math.min(page, pageCount);
+  const paginated = filtered.slice((currentPage - 1) * CARDS_PER_PAGE, currentPage * CARDS_PER_PAGE);
 
-  // A new tab, search or filter starts again from the first batch.
+  // A new tab, search or filter starts again from the first page.
   useEffect(() => {
-    setVisibleCount(CARD_BATCH);
+    setPage(1);
   }, [search, statusFilter, activeTab]);
 
   function handleTabChange(tab: ActiveTab) {
@@ -353,19 +355,9 @@ export default function VehicleAvailability() {
           )}
         </div>
 
-        {filtered.length > 0 && (
-          <div className="mt-5 flex flex-col items-center gap-3">
-            <p className="text-sm text-slate-500">Showing {paginated.length} of {filtered.length}</p>
-            {remaining > 0 && (
-              <button
-                type="button"
-                onClick={() => setVisibleCount(count => count + CARD_BATCH)}
-                className="inline-flex h-10 w-fit items-center gap-2 rounded-lg border border-slate-300 bg-white px-5 text-sm font-semibold text-[#1a1f6e] shadow-sm transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1a1f6e]/30"
-              >
-                Show more
-                <ChevronDown className="h-4 w-4" aria-hidden="true" />
-              </button>
-            )}
+        {filtered.length > 0 && !(activeTab === 'vehicles' && (vehiclesLoading || vehiclesError)) && (
+          <div className="mt-5">
+            <CardPagination page={currentPage} pageSize={CARDS_PER_PAGE} totalItems={filtered.length} itemLabel={activeTab} onPageChange={setPage} />
           </div>
         )}
       </div>
@@ -611,7 +603,6 @@ function HelperGrid({
             details={[
               ...(helper.leaveUntil ? [{ label: 'On leave until', value: formatDriverModalDate(helper.leaveUntil) }] : []),
               { label: 'Contact', value: notRecorded(contact), muted: !contact },
-              { label: 'Joined', value: helper.joinDate ? formatDriverModalDate(helper.joinDate) : 'Not recorded', muted: !helper.joinDate },
               { label: 'Truck', value: plate || 'No truck assigned', muted: !plate },
             ]}
             onView={() => onView(helper)}
@@ -657,7 +648,7 @@ function VehicleDetails({ vehicle, onClose }: { vehicle: VehicleAvailabilityReco
 
   return <Dialog open={!!vehicle} onOpenChange={open => { if (!open) onClose(); }}>
     <DialogContent hideCloseButton aria-describedby={undefined} className="!flex !flex-col w-[calc(100%-2rem)] max-w-[920px] max-h-[calc(100dvh-2rem)] min-h-0 overflow-hidden rounded-2xl border-0 bg-white p-0 gap-0 shadow-xl">
-      <ModalHeader icon={VehicleIcon} title="Vehicle details" subtitle={details?.plate || vehicle?.plate || undefined} closeLabel="Close vehicle details" />
+      <ModalHeader title="Vehicle details" subtitle={details?.plate || vehicle?.plate || undefined} closeLabel="Close vehicle details" />
 
       <div className="min-h-0 flex-1 space-y-3 overflow-y-auto bg-[#f1f4fa] p-4">
         {loading && <div className="rounded-xl border border-slate-200 bg-white p-3 text-sm text-slate-500">Loading latest vehicle details…</div>}
@@ -813,11 +804,10 @@ function formatAssignmentSchedule(assignment: NonNullable<VehicleAvailabilityRec
 }
 
 /** Shared layout for the Driver and Helper details modals, matching the Vehicle details modal. */
-function CrewDetailsDialog({ open, onClose, title, icon, name, initials, subtitle, status, stats, children }: {
+function CrewDetailsDialog({ open, onClose, title, name, initials, subtitle, status, stats, children }: {
   open: boolean;
   onClose: () => void;
   title: string;
-  icon: LucideIcon;
   name: string;
   initials: string;
   subtitle: string;
@@ -828,7 +818,7 @@ function CrewDetailsDialog({ open, onClose, title, icon, name, initials, subtitl
   return (
     <Dialog open={open} onOpenChange={next => { if (!next) onClose(); }}>
       <DialogContent hideCloseButton aria-describedby={undefined} className="!flex !flex-col w-[calc(100%-2rem)] max-w-[640px] max-h-[calc(100dvh-2rem)] min-h-0 overflow-hidden rounded-2xl border-0 bg-white p-0 gap-0 shadow-xl">
-        <ModalHeader icon={icon} title={title} closeLabel={`Close ${title.toLowerCase()}`} />
+        <ModalHeader title={title} closeLabel={`Close ${title.toLowerCase()}`} />
 
         <div className="min-h-0 flex-1 space-y-3 overflow-y-auto bg-[#f1f4fa] p-4">
           <section className="rounded-2xl border border-slate-200/70 bg-white p-4 shadow-sm">
@@ -862,11 +852,6 @@ function crewInitials(member: { fullName?: string } | null) {
   return member?.fullName ? getInitials(member.fullName) : '';
 }
 
-const recordedDate = (value?: string | null) => {
-  const text = formatDriverModalDate(value);
-  return text === 'Not recorded' ? '' : text;
-};
-
 const phone = (value?: string | null) => (value ? formatContactForDisplay(value) : '');
 
 function DriverDetails({ driver, onClose }: { driver: Driver | null; onClose: () => void }) {
@@ -875,14 +860,12 @@ function DriverDetails({ driver, onClose }: { driver: Driver | null; onClose: ()
       open={!!driver}
       onClose={onClose}
       title="Driver details"
-      icon={Contact}
       name={driver?.fullName ?? ''}
       initials={crewInitials(driver)}
       subtitle="Driver"
       status={displayHelperStatus(driver?.status)}
       stats={[
         { label: 'License type', value: driver?.licenseType },
-        { label: 'Join date', value: recordedDate(driver?.joinDate) },
       ]}
     >
       {driver && <>
@@ -951,7 +934,6 @@ function HelperDetails({ helper, onClose }: { helper: Helper | null; onClose: ()
       open={!!helper}
       onClose={onClose}
       title="Helper details"
-      icon={UserCheck}
       name={helper?.fullName ?? ''}
       initials={crewInitials(helper)}
       subtitle="Helper"
@@ -959,7 +941,6 @@ function HelperDetails({ helper, onClose }: { helper: Helper | null; onClose: ()
       stats={[
         { label: 'Contact number', value: phone(helper?.contact) },
         { label: 'Email', value: helper?.email },
-        { label: 'Join date', value: recordedDate(helper?.joinDate) },
       ]}
     >
       {helper && <>

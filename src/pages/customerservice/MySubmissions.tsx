@@ -135,7 +135,7 @@ function SubmissionDialog({ item, onClose, onAction, busy }: { item: Submission;
 
   return <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/50 p-4" onMouseDown={event => { if (event.target === event.currentTarget && !busy) onClose(); }}>
     <section role="dialog" aria-modal="true" aria-labelledby="submission-dialog-title" className={`flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl bg-[#f1f4fa] shadow-2xl`}>
-      <ModalHeader plain titleId="submission-dialog-title" icon={ClipboardCheck} title={changeTitle} subtitle={item.bookingNo || undefined} onClose={onClose} closeDisabled={busy} closeLabel="Close submission details" />
+      <ModalHeader plain titleId="submission-dialog-title" title={changeTitle} subtitle={item.bookingNo || undefined} onClose={onClose} closeDisabled={busy} closeLabel="Close submission details" />
       <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
         {loading ? <div className="rounded-2xl border border-slate-200 bg-white p-6 text-sm text-slate-500">Loading details...</div> : <>
           <section className="rounded-2xl border border-slate-200/70 bg-white p-4 shadow-sm"><div className="flex items-center justify-between gap-3"><SectionLabel>Request summary</SectionLabel><StatusPill status={item.status} /></div><div className="mt-3 grid grid-cols-2 gap-x-5 gap-y-4"><SummaryField label="Client" value={item.client} /><SummaryField label="Booking amount" value={currency.format(item.amount ?? Number(booking.amount ?? 0))} /></div></section>

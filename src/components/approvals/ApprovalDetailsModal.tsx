@@ -1,4 +1,3 @@
-import { ClipboardCheck } from 'lucide-react';
 import { Dialog, DialogContent } from '../ui/Dialog';
 import ModalHeader from '../ui/ModalHeader';
 import ApprovalDetailCards from './ApprovalDetailCards';
@@ -18,7 +17,6 @@ export default function ApprovalDetailsModal({ item, detail, loading, onClose }:
         className="flex max-h-[90vh] w-[calc(100vw-2rem)] max-w-2xl flex-col gap-0 overflow-hidden rounded-xl border-0 bg-white p-0 text-slate-800 shadow-xl sm:rounded-xl"
       >
         <ModalHeader
-          icon={ClipboardCheck}
           title="Approval details"
           subtitle={item?.bookingNo ?? '-'}
           aside={item && <ApprovalStatusBadge status={item.status} />}

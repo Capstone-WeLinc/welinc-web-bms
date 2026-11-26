@@ -1,6 +1,6 @@
 import { apiProblem } from '../../lib/api-shapes';
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
-import { ExternalLink, Loader2, Pencil } from 'lucide-react';
+import { ExternalLink, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Dialog, DialogContent } from '../ui/Dialog';
 import ModalHeader from '../ui/ModalHeader';
@@ -46,7 +46,6 @@ const invalidControlClass = '!border-red-500 focus:!border-red-500 focus:!ring-r
 
 type FormState = {
   status: CrewStatus;
-  joinDate: string;
   licenseNo: string;
   licenseType: string;
   licenseExpiry: string;
@@ -57,7 +56,6 @@ type FieldKey = keyof FormState;
 
 const toForm = (member: CrewMember): FormState => ({
   status: member.status,
-  joinDate: member.joinDate,
   licenseNo: member.licenseNo,
   licenseType: member.licenseType || 'Professional',
   licenseExpiry: member.licenseExpiry,
@@ -190,8 +188,8 @@ export default function CrewEditDialog({ target, onClose, onSaved }: {
   }, [target]);
 
   const fields: FieldKey[] = isDriver
-    ? ['joinDate', 'licenseNo', 'licenseExpiry', 'emergencyName', 'emergencyContact']
-    : ['joinDate', 'emergencyName', 'emergencyContact'];
+    ? ['licenseNo', 'licenseExpiry', 'emergencyName', 'emergencyContact']
+    : ['emergencyName', 'emergencyContact'];
 
   const fieldError = (key: FieldKey): string => {
     if (!form) return '';
@@ -200,7 +198,6 @@ export default function CrewEditDialog({ target, onClose, onSaved }: {
       case 'emergencyContact':
         if (!subscriberDigits(value)) return REQUIRED;
         return isValidMobile(value) ? '' : MOBILE;
-      case 'joinDate':
       case 'licenseExpiry':
         if (!value) return REQUIRED;
         return isDate(value) ? '' : 'Enter a valid date.';
@@ -232,7 +229,6 @@ export default function CrewEditDialog({ target, onClose, onSaved }: {
     try {
       const input = {
         status: form.status,
-        joinDate: form.joinDate,
         licenseNo: form.licenseNo.trim(),
         licenseType: form.licenseType,
         licenseExpiry: form.licenseExpiry,
@@ -242,7 +238,7 @@ export default function CrewEditDialog({ target, onClose, onSaved }: {
       const saved = await updateCrewMember(target.role, target.id, input);
       toast.success(`${isDriver ? 'Driver' : 'Helper'} updated`, { description: `${saved.fullName}'s team details were saved.` });
       // The service reads dates as UTC days; hand back the Manila days that were actually saved.
-      onSaved({ ...saved, joinDate: form.joinDate, licenseExpiry: isDriver ? form.licenseExpiry : saved.licenseExpiry });
+      onSaved({ ...saved, licenseExpiry: isDriver ? form.licenseExpiry : saved.licenseExpiry });
       onClose();
     } catch (error: unknown) {
       toast.error(apiProblem(error).message || `Unable to save the ${noun}.`);
@@ -266,7 +262,7 @@ export default function CrewEditDialog({ target, onClose, onSaved }: {
     </Field>
   );
 
-  const date = (key: 'joinDate' | 'licenseExpiry', label: string) => (
+  const date = (key: 'licenseExpiry', label: string) => (
     <Field label={label} error={errorFor(key)}>
       <DatePicker
         value={form?.[key] ?? ''}
@@ -282,7 +278,7 @@ export default function CrewEditDialog({ target, onClose, onSaved }: {
   return (
     <Dialog open={!!target} onOpenChange={next => { if (!next) close(); }}>
       <DialogContent hideCloseButton aria-describedby={undefined} className="!flex !flex-col w-[calc(100%-2rem)] max-w-[640px] max-h-[calc(100dvh-2rem)] min-h-0 overflow-hidden rounded-2xl border-0 bg-white p-0 gap-0 shadow-xl">
-        <ModalHeader icon={Pencil} title={`Edit ${noun}`} subtitle={member?.fullName || undefined} closeLabel={`Close edit ${noun}`} closeDisabled={saving} onClose={close} />
+        <ModalHeader title={`Edit ${noun}`} subtitle={member?.fullName || undefined} closeLabel={`Close edit ${noun}`} closeDisabled={saving} onClose={close} />
 
         <form noValidate onSubmit={save} className="flex min-h-0 flex-1 flex-col">
           <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain bg-[#f1f4fa] p-4">
@@ -299,7 +295,6 @@ export default function CrewEditDialog({ target, onClose, onSaved }: {
 
               <FormSection title="Work details">
                 <ChoiceField label="Status" value={form.status} options={CREW_STATUS_OPTIONS} onChange={value => set('status', value as CrewStatus)} />
-                {date('joinDate', 'Join date')}
               </FormSection>
 
               {isDriver && (

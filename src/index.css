@@ -10,6 +10,24 @@ table thead th {
   letter-spacing: 0.05em;
 }
 
+/*
+ * Compact tables (spec bms/0017): every data table gets a 44px header and 64px rows.
+ * Row height on a <tr> is a minimum, so a row with more content still grows to fit.
+ * Date-picker calendars and the small "requested change" table in a modal keep their own sizing.
+ */
+table:not(.submission-change-table) thead tr {
+  height: 44px;
+}
+
+table:not(.submission-change-table) tbody tr {
+  height: 64px;
+}
+
+.date-picker-calendar table tr,
+table.rdp-month_grid tr {
+  height: auto;
+}
+
 .approval-data-table {
   width: 100%;
   border-collapse: collapse;
@@ -19,7 +37,7 @@ table thead th {
 
 .approval-data-table thead th {
   background-color: #0b0f4a !important;
-  padding: 0.5rem 0.625rem;
+  padding: 0.625rem 1rem;
   font-size: 0.75rem;
   font-weight: 700;
   text-transform: uppercase;
@@ -29,7 +47,7 @@ table thead th {
 
 .approval-data-table tbody td {
   border-bottom: 1px solid #dde4ef;
-  padding: 0.5rem 0.625rem;
+  padding: 0.75rem 1rem;
   vertical-align: middle;
   font-size: 0.875rem;
   line-height: 1.375rem;

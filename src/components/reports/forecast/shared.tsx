@@ -103,10 +103,10 @@ export function DataTable({ caption, columns, rows }: { caption: string; columns
   return <details className="group">
     <summary className="cursor-pointer list-none text-xs font-semibold text-[#1a1f6e] hover:underline"><span className="group-open:hidden">Show data table</span><span className="hidden group-open:inline">Hide data table</span></summary>
     <div className="mt-2 max-h-64 overflow-auto rounded-lg border border-slate-200 bg-white">
-      <table className="w-full text-left text-xs">
+      <table className="w-full text-left text-sm">
         <caption className="sr-only">{caption}</caption>
-        <thead className="sticky top-0 bg-slate-50 text-slate-600"><tr>{columns.map((column) => <th key={column.key} scope="col" className={`px-3 py-2 font-semibold ${column.align === 'right' ? 'text-right' : ''}`}>{column.label}</th>)}</tr></thead>
-        <tbody className="divide-y divide-slate-100">{rows.map((row, index) => <tr key={index}>{columns.map((column) => <td key={column.key} className={`px-3 py-1.5 text-slate-700 ${column.align === 'right' ? 'text-right tabular-nums' : ''}`}>{row[column.key]}</td>)}</tr>)}</tbody>
+        <thead className="sticky top-0 bg-slate-50 text-slate-600"><tr>{columns.map((column) => <th key={column.key} scope="col" className={`px-4 py-2.5 text-xs font-semibold ${column.align === 'right' ? 'text-right' : ''}`}>{column.label}</th>)}</tr></thead>
+        <tbody className="divide-y divide-slate-100">{rows.map((row, index) => <tr key={index}>{columns.map((column) => <td key={column.key} className={`px-4 py-3 text-slate-700 ${column.align === 'right' ? 'text-right tabular-nums' : ''}`}>{row[column.key]}</td>)}</tr>)}</tbody>
       </table>
     </div>
   </details>;

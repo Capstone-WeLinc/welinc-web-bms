@@ -1,5 +1,6 @@
 import { apiProblem } from '../../lib/api-shapes';
 import ModalHeader from '../../components/ui/ModalHeader';
+import CardPagination from '../../components/ui/CardPagination';
 import { useEffect, useMemo, useState } from "react";
 import PageHeader from "../../components/pageheader/Pageheader";
 import {
@@ -16,7 +17,6 @@ import {
   X,
   Search,
   Trash2,
-  type LucideIcon,
 } from "lucide-react";
 import DeleteConfirmModal from "../../components/shared/DeleteConfirmModal";
 import { DetailCard, ServiceDetailCards } from "../../components/services/ServiceDetails";
@@ -45,6 +45,8 @@ const blank = { name: "", description: "", duration: "", price: "", cashCharge: 
 const MAX_ITEMS = 20;
 const MAX_ITEM_LENGTH = 200;
 const toRows = (list?: string[]) => (list?.length ? [...list] : [""]);
+/** Cards per page: four rows of the three-column grid, as on Vehicle & Team Availability. */
+const CARDS_PER_PAGE = 12;
 const fromRows = (rows: string[]) => rows.map((row) => row.trim()).filter(Boolean);
 type DetailListKey = "inclusions" | "paymentOptions" | "exclusions";
 type RequiredField = "name" | "description" | "duration" | "price" | "cashCharge" | DetailListKey;
@@ -78,6 +80,7 @@ export default function ServicesOffered() {
   const [services, setServices] = useState<Item[]>([]);
   const [materials, setMaterials] = useState<Item[]>([]);
   const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Item | null>(null);
@@ -117,6 +120,12 @@ export default function ServicesOffered() {
       ),
     [tab, primaryServices, services, materials, search],
   );
+  // Card pagination (spec bms/0017). A delete or a refresh can shorten the list, so the page is clamped.
+  const pageCount = Math.max(1, Math.ceil(rows.length / CARDS_PER_PAGE));
+  const currentPage = Math.min(page, pageCount);
+  const pageRows = rows.slice((currentPage - 1) * CARDS_PER_PAGE, currentPage * CARDS_PER_PAGE);
+  // A new tab or search starts again from the first page.
+  useEffect(() => { setPage(1); }, [tab, search]);
   const showForm = (item?: Item) => {
     setEditing(item ?? null);
     setForm(
@@ -312,7 +321,7 @@ export default function ServicesOffered() {
             </div>
           ) : (
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-              {rows.map((item) => {
+              {pageRows.map((item) => {
                 const Icon = serviceIcon(item.name);
                 const active = activeValue(item);
                 return <article key={item.id} tabIndex={0} className="group rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition-all duration-150 hover:-translate-y-0.5 hover:border-[#1a1f6e] hover:shadow-lg hover:shadow-[#1a1f6e]/15 focus-visible:-translate-y-0.5 focus-visible:border-[#1a1f6e] focus-visible:shadow-lg focus-visible:shadow-[#1a1f6e]/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1a1f6e]/20">
@@ -340,6 +349,9 @@ export default function ServicesOffered() {
             </div>
           )
         }
+        {!loading && rows.length > 0 && (
+          <CardPagination page={currentPage} pageSize={CARDS_PER_PAGE} totalItems={rows.length} itemLabel={tab === "material" ? "protective materials" : tab === "additional" ? "additional services" : "services"} onPageChange={setPage} />
+        )}
       </section>
       {open && (() => {
         const noun = tab === "primary" ? "service" : tab === "additional" ? "additional service" : "protective material";
@@ -347,7 +359,6 @@ export default function ServicesOffered() {
         return (
         <Modal
           onClose={() => setOpen(false)}
-          icon={editing ? Pencil : undefined}
           title={`${editing ? "Edit" : "Add"} ${noun}`}
           subtitle={editing?.name}
           closeDisabled={saving}
@@ -487,7 +498,7 @@ export default function ServicesOffered() {
         );
       })()}
       {viewTarget && (
-        <Modal onClose={() => setViewTarget(null)} icon={Eye} title={viewTarget.name}>
+        <Modal onClose={() => setViewTarget(null)} title={viewTarget.name}>
           <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain bg-[#f1f4fa] p-4">
             <DetailCard title="Overview">
               <dl className="grid grid-cols-2 gap-x-5 gap-y-4">
@@ -547,14 +558,12 @@ function Tab({
 }
 function Modal({
   onClose,
-  icon,
   title,
   subtitle,
   closeDisabled = false,
   children,
 }: {
   onClose: () => void;
-  icon?: LucideIcon;
   title: string;
   subtitle?: string;
   closeDisabled?: boolean;
@@ -563,7 +572,7 @@ function Modal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4">
       <div role="dialog" aria-modal="true" aria-labelledby="services-offered-modal-title" className="flex max-h-[calc(100dvh-2rem)] w-full max-w-[520px] flex-col overflow-hidden rounded-2xl bg-white shadow-xl">
-        <ModalHeader plain titleId="services-offered-modal-title" icon={icon} title={title} subtitle={subtitle} onClose={onClose} closeDisabled={closeDisabled} closeLabel={`Close ${title.toLowerCase()}`} />
+        <ModalHeader plain titleId="services-offered-modal-title" title={title} subtitle={subtitle} onClose={onClose} closeDisabled={closeDisabled} closeLabel={`Close ${title.toLowerCase()}`} />
         {children}
       </div>
     </div>

@@ -54,7 +54,7 @@ function SummaryCard({ label, value, tone, icon: Icon, active, onClick }: { labe
 }
 
 /**
- * The row's only action (spec bms/0012): Edit opens the form for the BMS details. Name, email and
+ * The row's only action (spec bms/0012), shown as the pencil icon only (spec bms/0017): Edit opens the form for the BMS details. Name, email and
  * contact number are edited in the portal, through the link inside that form. There is no Delete:
  * a driver or helper leaves this list when their role is removed in the portal.
  */
@@ -64,10 +64,10 @@ function EditButton({ name, onEdit }: { name: string; onEdit: () => void }) {
       type="button"
       onClick={onEdit}
       aria-label={`Edit ${name}`}
-      className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium text-[#1a1f6e] transition hover:bg-[#eef0fa] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1a1f6e]/30"
+      title="Edit"
+      className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-slate-600 transition-colors hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1a1f6e]/30"
     >
       <Pencil className="h-4 w-4" aria-hidden="true" />
-      Edit
     </button>
   );
 }
@@ -166,7 +166,7 @@ export default function CrewManagement() {
     { label: 'On duty', value: counts.onDuty, tone: 'bg-blue-50 text-blue-700', icon: Clock3, target: 'On Duty' as StatusChoice },
     { label: 'On leave', value: counts.onLeave, tone: 'bg-purple-50 text-purple-700', icon: UserCheck, target: 'On Leave' as StatusChoice },
   ];
-  const headings = ['Name', 'Contact', 'Status', 'Join date', ...(kind === 'drivers' ? ['License'] : []), 'Actions'];
+  const headings = ['Name', 'Contact', 'Status', ...(kind === 'drivers' ? ['License'] : []), 'Actions'];
 
   return (
     <div className="space-y-5">
@@ -230,7 +230,6 @@ export default function CrewManagement() {
                     </td>
                     <td className="whitespace-nowrap px-4 py-3 align-middle tabular-nums text-slate-700">{formatPhone(member.contact)}</td>
                     <td className="px-4 py-3 align-middle"><StatusPill status={member.status} /></td>
-                    <td className="whitespace-nowrap px-4 py-3 align-middle tabular-nums text-slate-700">{formatDay(member.joinDate)}</td>
                     {kind === 'drivers' && <td className="px-4 py-3 align-middle"><LicenseCell member={member} /></td>}
                     <td className="px-4 py-3 align-middle">
                       <div className="flex justify-center">

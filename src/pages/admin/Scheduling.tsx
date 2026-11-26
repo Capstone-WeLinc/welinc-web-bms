@@ -568,7 +568,7 @@ export default function Scheduling({ canAssign = true }: { canAssign?: boolean }
         {/* ── List View ── */}
         {viewMode === 'list' && (
           <div className="overflow-x-auto">
-            <table className="min-w-[1100px] w-full table-auto text-[11px] sm:text-xs">
+            <table className="min-w-[1100px] w-full table-auto text-sm">
               <thead>
                 <tr className="bg-[#1a1f6e]">
                   <th className="px-4 py-2.5 text-left font-semibold text-white uppercase tracking-wide">Booking No.</th>
@@ -590,37 +590,37 @@ export default function Scheduling({ canAssign = true }: { canAssign?: boolean }
                   const driver = getScheduleDriver(s);
                   return (
                     <tr key={s.id} className="hover:bg-slate-50 transition-colors">
-                      <td className="px-4 py-2.5 align-top">
+                      <td className="px-4 py-2.5 align-middle">
                         <span className="inline-block min-w-[190px] pr-6 text-sm font-medium text-slate-900 tabular-nums whitespace-nowrap">{s.bookingNo ?? '-'}</span>
                       </td>
-                      <td className="px-4 py-2.5 align-top">
+                      <td className="px-4 py-2.5 align-middle">
                         <span className="min-w-[160px] text-sm font-semibold text-slate-900 truncate block">{s.client}</span>
                       </td>
-                      <td className="px-4 py-2.5 align-top">
+                      <td className="px-4 py-2.5 align-middle">
                         <span className="inline-block min-w-[110px] text-sm text-slate-700 tabular-nums whitespace-nowrap">{s.date}</span>
                       </td>
-                      <td className="px-4 py-2.5 align-top">
+                      <td className="px-4 py-2.5 align-middle">
                         <span className={`inline-block min-w-[110px] text-sm whitespace-nowrap ${vehicle ? 'text-slate-700' : 'text-slate-500'}`}>{vehicle ? `${vehicle.plate} - ${vehicle.alias}` : 'Not assigned'}</span>
                       </td>
-                      <td className="px-4 py-2.5 align-top">
+                      <td className="px-4 py-2.5 align-middle">
                         <span className={`inline-block min-w-[110px] text-sm whitespace-nowrap ${driver ? 'text-slate-700' : 'text-slate-500'}`}>{driver ? driver.fullName : 'Not assigned'}</span>
                       </td>
-                      <td className="max-w-[200px] px-4 py-2.5 align-top">
+                      <td className="max-w-[200px] px-4 py-2.5 align-middle">
                         <span className="block max-w-[200px] truncate text-sm text-slate-700" title={s.origin}>{s.origin}</span>
                       </td>
-                      <td className="max-w-[200px] px-4 py-2.5 align-top">
+                      <td className="max-w-[200px] px-4 py-2.5 align-middle">
                         <span className="block max-w-[200px] truncate text-sm text-slate-700" title={s.destination}>{s.destination}</span>
                       </td>
-                      <td className="px-4 py-2.5 align-top">
+                      <td className="px-4 py-2.5 align-middle">
                         <span className={`text-sm truncate block ${s.garage ?? vehicle?.garage ? 'text-slate-700' : 'text-slate-500'}`}>{s.garage ?? vehicle?.garage ?? '-'}</span>
                       </td>
-                      <td className="px-4 py-2.5 align-top [&>span]:!text-xs">
+                      <td className="px-4 py-2.5 align-middle [&>span]:!text-xs">
                         {s.deliveryType ? <DeliveryTypeBadge type={s.deliveryType} /> : <span className="text-sm text-slate-500">-</span>}
                       </td>
-                      <td className="px-4 py-2.5 align-top">
+                      <td className="px-4 py-2.5 align-middle">
                         <ScheduleStatusBadge status={s.status} date={s.date} time={s.pickupTime || s.time} />
                       </td>
-                      <td className="px-4 py-2.5 align-top">
+                      <td className="px-4 py-2.5 align-middle">
                         <div className="flex items-center justify-center">
                           {/* One action shows as its own icon button; the ⋮ menu is only for two or more. */}
                           {!canAssign ? (
@@ -697,7 +697,6 @@ export default function Scheduling({ canAssign = true }: { canAssign?: boolean }
           {assignTarget && (
             <>
               <ModalHeader
-                icon={UserCheck}
                 title="Assign resources"
                 subtitle={assignTarget.bookingNo || undefined}
                 onClose={() => { setAssignTarget(null); setAssignmentTouched({}); }}

@@ -56,7 +56,7 @@ export default function ScheduleDetailsDialog({ schedule, onClose, vehicle, vehi
   return <Dialog open={!!schedule} onOpenChange={open => { if (!open) onClose(); }}>
     <DialogContent hideCloseButton aria-describedby={undefined} className="w-[calc(100%-2rem)] max-w-[560px] max-h-[calc(100dvh-2rem)] overflow-hidden rounded-2xl border-0 bg-white p-0 gap-0 shadow-xl">
       {schedule && <>
-        <ModalHeader icon={CalendarDays} title="Schedule details" subtitle={schedule.bookingNo || undefined} closeLabel="Close schedule details" />
+        <ModalHeader title="Schedule details" subtitle={schedule.bookingNo || undefined} closeLabel="Close schedule details" />
 
         <div className="max-h-[70vh] space-y-3 overflow-y-auto bg-[#f1f4fa] p-4">
           {schedule.permitRequired && <div role="alert" className="flex items-center gap-3.5 rounded-xl border border-red-300 bg-red-50 p-3.5">

@@ -44,16 +44,16 @@ export const typeText = (item: ApprovalItem) => item.type === 'booking' ? (subty
 export function requestStyle(item: ApprovalItem): { icon: LucideIcon; tile: string; pill: string } {
   if (item.type === 'booking') {
     return item.subtype === 'cancel'
-      ? { icon: CalendarX2, tile: 'bg-orange-50 text-orange-600', pill: 'bg-orange-50 text-orange-700' }
+      ? { icon: CalendarX2, tile: 'bg-orange-50 text-orange-600', pill: 'bg-orange-100 text-orange-800' }
       : item.subtype === 'reschedule'
-        ? { icon: CalendarClock, tile: 'bg-indigo-50 text-indigo-600', pill: 'bg-indigo-50 text-indigo-700' }
-        : { icon: FileCheck2, tile: 'bg-indigo-50 text-indigo-600', pill: 'bg-indigo-50 text-indigo-700' };
+        ? { icon: CalendarClock, tile: 'bg-indigo-50 text-indigo-600', pill: 'bg-indigo-100 text-indigo-800' }
+        : { icon: FileCheck2, tile: 'bg-indigo-50 text-indigo-600', pill: 'bg-indigo-100 text-indigo-800' };
   }
-  if (item.type === 'collection') return { icon: Wallet, tile: 'bg-emerald-50 text-emerald-600', pill: 'bg-emerald-50 text-emerald-700' };
-  if (item.type === 'refund') return { icon: RotateCcw, tile: 'bg-rose-50 text-rose-600', pill: 'bg-rose-50 text-rose-700' };
+  if (item.type === 'collection') return { icon: Wallet, tile: 'bg-emerald-50 text-emerald-600', pill: 'bg-emerald-100 text-emerald-800' };
+  if (item.type === 'refund') return { icon: RotateCcw, tile: 'bg-rose-50 text-rose-600', pill: 'bg-rose-100 text-rose-800' };
   return item.subtype === 'emergency'
-    ? { icon: Siren, tile: 'bg-red-50 text-red-600', pill: 'bg-red-50 text-red-700' }
-    : { icon: UserRoundMinus, tile: 'bg-purple-50 text-purple-600', pill: 'bg-purple-50 text-purple-700' };
+    ? { icon: Siren, tile: 'bg-red-50 text-red-600', pill: 'bg-red-100 text-red-800' }
+    : { icon: UserRoundMinus, tile: 'bg-purple-50 text-purple-600', pill: 'bg-purple-100 text-purple-800' };
 }
 
 /** When a waiting request becomes overdue, and how that reads ("Due in 5h", "Overdue"). */

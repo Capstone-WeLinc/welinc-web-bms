@@ -43,9 +43,9 @@ export const tableClasses =
 export const tableHeadClasses =
   "bg-[#030848] text-white";
 export const tableHeaderCellClasses =
-  "px-2.5 py-2 text-xs font-bold uppercase tracking-wide align-middle";
+  "px-4 py-2.5 text-xs font-bold uppercase tracking-wide align-middle";
 export const tableCellClasses =
-  "border-b border-[#dde4ef] px-2.5 py-2 align-middle text-sm";
+  "border-b border-[#dde4ef] px-4 py-3 align-middle text-sm";
 export const tableRowClasses =
   "transition-colors hover:bg-[#f8fafc]";
 export const checkboxClasses =
@@ -474,11 +474,11 @@ export function DataTable<T>({
 }: DataTableProps<T>) {
   const headerCellClasses =
     density === "compact"
-      ? "px-2 py-1.5 text-[11px] font-bold uppercase tracking-wide align-middle"
+      ? tableHeaderCellClasses
       : tableHeaderCellClasses;
   const bodyCellClasses =
     density === "compact"
-      ? "border-b border-[#dde4ef] px-2 py-1 align-middle text-sm"
+      ? tableCellClasses
       : tableCellClasses;
 
   return (
