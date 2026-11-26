@@ -156,8 +156,6 @@ export interface Vehicle {
   status: VehicleStatus;
   requiredHelpers: number;
   mileage: number;
-  regExpiry: string;
-  insExpiry: string;
   lastMaintenance: string;
   nextMaintenance: string;
   driverId: string | null;

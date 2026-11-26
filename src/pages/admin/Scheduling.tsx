@@ -308,8 +308,6 @@ export default function Scheduling({ canAssign = true }: { canAssign?: boolean }
         status: mapVehicleStatus(vehicle.status),
         requiredHelpers: vehicle.requiredHelpers || 1,
         mileage: vehicle.mileage || 0,
-        regExpiry: vehicle.regExpiry || '',
-        insExpiry: vehicle.insExpiry || '',
         lastMaintenance: vehicle.lastMaintenance || '',
         nextMaintenance: vehicle.nextMaintenance || '',
         driverId: vehicle.driverId || null,
