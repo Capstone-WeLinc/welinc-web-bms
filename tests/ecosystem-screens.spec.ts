@@ -23,7 +23,7 @@ const screens: Record<keyof typeof accounts, Screen[]> = {
     { label: 'Vehicle & Team Availability', path: '/admin/vehicle-availability' },
     { label: 'Post-Service', path: '/admin/post-service' },
     { label: 'Sales Report', path: '/admin/sales-report' },
-    { label: 'Analytics & Reports', path: '/admin/reports' },
+    { label: 'Analytics & AI', path: '/admin/reports' },
   ],
   cs: [
     { label: 'Dashboard', path: '/cs/dashboard' },

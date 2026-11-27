@@ -75,15 +75,18 @@ function FormSection({ title, children }: { title: string; children: ReactNode }
   );
 }
 
-/** The account's own details, which only the portal edits. */
-function AccountSection({ member }: { member: CrewMember }) {
+/**
+ * The profile card: the account's own details, which only the portal edits, followed by the
+ * BMS work status passed in as children.
+ */
+function ProfileSection({ member, children }: { member: CrewMember; children: ReactNode }) {
   const formatted = member.contact.replace(/^\+63(\d{3})(\d{3})(\d{4})$/, '+63 $1 $2 $3');
   return (
     <section className="rounded-2xl border border-slate-200/70 bg-white p-4 shadow-sm">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h3 className="flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-[#1a1f6e]">
           <span aria-hidden="true" className="h-4 w-[3px] rounded-full bg-[#e8b800]" />
-          Account
+          Profile
         </h3>
         <a href={portalAccountUrl(member.userId)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-sm font-semibold text-[#1a1f6e] underline-offset-4 hover:underline">
           Edit in portal <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
@@ -94,6 +97,7 @@ function AccountSection({ member }: { member: CrewMember }) {
         <div className="min-w-0"><dt className="text-sm font-medium text-slate-700">Email</dt><dd className="mt-1 truncate text-base text-slate-900">{member.email || '-'}</dd></div>
         <div><dt className="text-sm font-medium text-slate-700">Contact number</dt><dd className="mt-1 text-base tabular-nums text-slate-900">{formatted || '-'}</dd></div>
       </dl>
+      <div className="mt-4 grid gap-4 border-t border-slate-100 pt-4 sm:grid-cols-2">{children}</div>
     </section>
   );
 }
@@ -291,11 +295,9 @@ export default function CrewEditDialog({ target, onClose, onSaved }: {
                 <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> Loading {noun} details...
               </div>
             ) : <>
-              <AccountSection member={member} />
-
-              <FormSection title="Work details">
+              <ProfileSection member={member}>
                 <ChoiceField label="Status" value={form.status} options={CREW_STATUS_OPTIONS} onChange={value => set('status', value as CrewStatus)} />
-              </FormSection>
+              </ProfileSection>
 
               {isDriver && (
                 <FormSection title="License">
