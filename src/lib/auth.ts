@@ -100,7 +100,7 @@ export function getNavItems(role: UserRole): NavEntry[] {
         {
           type: 'section', label: 'Reports & Analytics', icon: WalletCards, items: [
             { label: 'Sales Report', path: '/admin/sales-report', icon: Banknote },
-            { label: 'Analytics & Reports', path: '/admin/reports', icon: BarChart3 },
+            { label: 'Analytics & AI', path: '/admin/reports', icon: BarChart3 },
           ],
         },
       ];
